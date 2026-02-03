@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="javafx_demo.controller.OrderFormController"
+            prefHeight="600.0" prefWidth="1000.0"
+            style="-fx-background-color: #f5f5f5;">
+
+    <!-- Top: Toolbar -->
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="10.0" 
+              style="-fx-background-color: white; -fx-padding: 15; -fx-border-color: #dcdcdc; -fx-border-width: 0 0 1 0;">
+            <Label text="工单管理" style="-fx-font-weight: bold;">
+                <font>
+                    <Font size="16.0"/>
+                </font>
+            </Label>
+            <Separator orientation="VERTICAL"/>
+            
+            <Button fx:id="addBtn" text="➕ 新建" onAction="#handleAddOrder"
+                   style="-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-padding: 8 15 8 15; -fx-cursor: hand;"/>
+            
+            <Button fx:id="editBtn" text="✏️ 编辑" onAction="#handleEditOrder"
+                   style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-padding: 8 15 8 15; -fx-cursor: hand;"/>
+            
+            <Button fx:id="deleteBtn" text="🗑️ 删除" onAction="#handleDeleteOrder"
+                   style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-padding: 8 15 8 15; -fx-cursor: hand;"/>
+            
+            <Region HBox.hgrow="ALWAYS"/>
+            
+            <Label text="搜索:" style="-fx-text-fill: #2c3e50;"/>
+            <TextField fx:id="searchField" promptText="输入工单ID..." prefWidth="150.0"
+                      style="-fx-padding: 5;"/>
+            
+            <Button fx:id="searchBtn" text="🔍 搜索" onAction="#handleSearch"
+                   style="-fx-background-color: #95a5a6; -fx-text-fill: white; -fx-padding: 8 15 8 15; -fx-cursor: hand;"/>
+        </HBox>
+    </top>
+
+    <!-- Center: Table -->
+    <center>
+        <TableView fx:id="orderTable" style="-fx-font-size: 12;">
+            <columns>
+                <TableColumn fx:id="idCol" text="工单ID" prefWidth="120.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="priceCol" text="单价" prefWidth="80.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="gameCol" text="游戏" prefWidth="100.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="quantityCol" text="小时数" prefWidth="80.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="statusCol" text="状态" prefWidth="100.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="startCol" text="开始日期" prefWidth="120.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="endCol" text="结束日期" prefWidth="120.0" style="-fx-alignment: CENTER;"/>
+                <TableColumn fx:id="actionCol" text="操作" prefWidth="120.0" style="-fx-alignment: CENTER;"/>
+            </columns>
+        </TableView>
+    </center>
+
+    <!-- Bottom: Status Bar -->
+    <bottom>
+        <HBox alignment="CENTER_LEFT" spacing="10.0"
+              style="-fx-background-color: #ecf0f1; -fx-padding: 8; -fx-border-color: #dcdcdc; -fx-border-width: 1 0 0 0;">
+            <Label fx:id="statusLabel" text="就绪" style="-fx-text-fill: #7f8c8d;">
+                <font>
+                    <Font size="12.0"/>
+                </font>
+            </Label>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label fx:id="countLabel" text="总计: 0 个工单" style="-fx-text-fill: #7f8c8d;">
+                <font>
+                    <Font size="12.0"/>
+                </font>
+            </Label>
+        </HBox>
+    </bottom>
+
+</BorderPane>

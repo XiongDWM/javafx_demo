@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<AnchorPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="javafx_demo.controller.LoginController"
+            prefHeight="500.0" prefWidth="400.0"
+            style="-fx-background-color: #f5f5f5;">
+
+    <VBox alignment="CENTER" spacing="20.0" AnchorPane.topAnchor="0.0" AnchorPane.bottomAnchor="0.0"
+          AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0">
+        <padding>
+            <Insets top="40.0" right="40.0" bottom="40.0" left="40.0"/>
+        </padding>
+
+        <!-- Logo/Title Area -->
+        <VBox alignment="CENTER" spacing="10.0">
+            <Label text="打手客户端登录" style="-fx-text-fill: #2c3e50;">
+                <font>
+                    <Font name="System Bold" size="32.0"/>
+                </font>
+            </Label>
+            <Label fx:id="subtitleLabel" text="JavaFX Demo Application" style="-fx-text-fill: #7f8c8d;">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Label>
+        </VBox>
+
+        <!-- Login Form -->
+        <VBox spacing="15.0" style="-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 2);">
+            <padding>
+                <Insets top="30.0" right="30.0" bottom="30.0" left="30.0"/>
+            </padding>
+
+            <!-- Username Field -->
+            <VBox spacing="5.0">
+                <Label text="用户名" style="-fx-text-fill: #2c3e50; -fx-font-weight: bold;"/>
+                <TextField fx:id="usernameField" promptText="请输入用户名"
+                          style="-fx-background-radius: 5; -fx-border-radius: 5; -fx-border-color: #dcdcdc; -fx-padding: 10;">
+                    <font>
+                        <Font size="14.0"/>
+                    </font>
+                </TextField>
+            </VBox>
+
+            <!-- Password Field -->
+            <VBox spacing="5.0">
+                <Label text="密码" style="-fx-text-fill: #2c3e50; -fx-font-weight: bold;"/>
+                <PasswordField fx:id="passwordField" promptText="请输入密码"
+                              style="-fx-background-radius: 5; -fx-border-radius: 5; -fx-border-color: #dcdcdc; -fx-padding: 10;">
+                    <font>
+                        <Font size="14.0"/>
+                    </font>
+                </PasswordField>
+            </VBox>
+
+            <!-- Remember Me Checkbox -->
+            <HBox alignment="CENTER_LEFT" spacing="10.0">
+                <CheckBox fx:id="rememberMeCheckbox" text="记住我" style="-fx-text-fill: #2c3e50;"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Hyperlink fx:id="forgotPasswordLink" text="忘记密码?" style="-fx-text-fill: #3498db;"/>
+            </HBox>
+
+            <!-- Error Message Label -->
+            <Label fx:id="errorLabel" text="" style="-fx-text-fill: #e74c3c; -fx-font-size: 12;"
+                   wrapText="true" managed="false" visible="false"/>
+
+            <!-- Login Button -->
+            <Button fx:id="loginButton" text="登录" onAction="#handleLogin" maxWidth="Infinity"
+                   style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-background-radius: 5; -fx-cursor: hand; -fx-padding: 12;">
+                <font>
+                    <Font name="System Bold" size="16.0"/>
+                </font>
+            </Button>
+
+        </VBox>
+
+        <!-- Footer -->
+        <Label fx:id="versionLabel" text="Version 1.0.0" style="-fx-text-fill: #95a5a6;">
+            <font>
+                <Font size="12.0"/>
+            </font>
+        </Label>
+    </VBox>
+
+</AnchorPane>

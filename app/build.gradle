@@ -1,0 +1,83 @@
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+    id 'edu.sc.seis.launch4j' version '3.0.7'
+    id 'de.inetsoftware.jwebassembly' version '1.4.1'
+    id 'org.beryx.jlink' version '3.0.1'
+    // id 'de.inetsoftware.jwebassembly' version 'master-SNAPSHOT'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Use JUnit Jupiter for testing.
+    testImplementation libs.junit.jupiter
+
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    implementation libs.guava
+
+    // JavaFX依赖由插件自动管理，无需手动声明
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'javafx_demo.App'
+}
+
+javafx {
+    version = "21.0.3"
+    modules = [ 'javafx.controls', 'javafx.fxml' ]
+}
+// jlink 配置示例：项目模块化后可用（需要 module-info.java）
+jlink {
+    options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
+    imageName = 'env'
+    launcher {
+        name = '未来电竞打手端' // 生成的可执行文件名
+        // 为运行时添加 JVM 参数，例如启用 ZGC（Java 21）
+        jvmArgs = ['-XX:+UseZGC']
+    }
+}
+
+launch4j {
+    mainClassName = 'javafx_demo.App'
+    outfile = '未来电竞打手端.exe'
+    productName="未来电竞打手端"
+    icon = "${projectDir}/src/main/resources/icon.ico"
+    bundledJrePath = './env'
+}
+
+tasks.register('pack', Copy) {
+    group = "distribution"
+    description = "整合 JRE 和 EXE 到一个发布文件夹"
+    
+    // 1. 确保先生成了 JRE 和 EXE
+    dependsOn(['jlink', 'createExe'])
+    
+    // 2. 定义输出目录
+    into "${buildDir}/dist/pal_ending_app"
+    
+    // 3. 拷贝 jlink 生成的内容到 jre 子目录
+    from("${buildDir}/env") {
+        into 'env'
+    }
+    
+    // 4. 拷贝 exe 到根目录
+    from("${buildDir}/launch4j/${launch4j.outfile}")
+    
+    doLast {
+        println "打包完成！请查看目录: ${buildDir}/dist/pal_ending_app"
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
