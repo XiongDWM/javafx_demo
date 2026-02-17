@@ -1,16 +1,13 @@
 package javafx_demo.service;
 
-import javafx.beans.property.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx_demo.entity.Order;
-import javafx_demo.utils.OrderStatusEnum;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -47,13 +44,13 @@ public class OrderJsonLoader {
             if (!orders.isEmpty()) {
                 Order first = orders.get(0);
                 System.out.println("\n第一个工单详情:");
-                System.out.println("  ID: " + first.id().getValue());
-                System.out.println("  单价: " + first.price().getValue());
-                System.out.println("  游戏: " + first.gameType().getValue());
-                System.out.println("  小时数: " + first.quantity().getValue());
-                System.out.println("  状态: " + first.status().getValue());
-                System.out.println("  开始日期: " + first.startAt().getValue());
-                System.out.println("  结束日期: " + first.endAt().getValue());
+                System.out.println("  ID: " + first.getOrderId());
+                System.out.println("  收入: " + first.getLowIncome());
+                System.out.println("  类型: " + first.getTypeText());
+                System.out.println("  数量: " + first.getAmount());
+                System.out.println("  状态: " + first.getStatusText());
+                System.out.println("  开始日期: " + first.getIssueDate());
+                System.out.println("  结束日期: " + first.getEndAt());
             }
             
         } catch (IOException e) {
@@ -154,9 +151,9 @@ public class OrderJsonLoader {
     private static Order parseOrderObject(String jsonStr) {
         try {
             String id = extractField(jsonStr, "id");
-            double price = parseDouble(extractField(jsonStr, "price"));
+            String priceStr = extractField(jsonStr, "price");
             String gameType = extractField(jsonStr, "gameType");
-            double quantity = parseDouble(extractField(jsonStr, "quantity"));
+            String quantityStr = extractField(jsonStr, "quantity");
             String statusStr = extractField(jsonStr, "status");
             String startAtStr = extractField(jsonStr, "startAt");
             String endAtStr = extractField(jsonStr, "endAt");
@@ -166,19 +163,15 @@ public class OrderJsonLoader {
                 return null;
             }
             
-            OrderStatusEnum status = OrderStatusEnum.valueOf(statusStr);
-            Date startAt = Date.valueOf(startAtStr);
-            Date endAt = Date.valueOf(endAtStr);
-            
-            return new Order(
-                new SimpleStringProperty(id),
-                new SimpleDoubleProperty(price),
-                new SimpleStringProperty(gameType),
-                new SimpleDoubleProperty(quantity),
-                new SimpleObjectProperty<>(status),
-                new SimpleObjectProperty<>(startAt),
-                new SimpleObjectProperty<>(endAt)
-            );
+            Order order = new Order();
+            order.setOrderId(id);
+            order.setLowIncome(parseDouble(priceStr));
+            order.setType(gameType);
+            order.setAmount(parseDouble(quantityStr));
+            order.setStatus(statusStr);
+            order.setIssueDate(startAtStr);
+            order.setEndAt(endAtStr);
+            return order;
             
         } catch (Exception e) {
             System.err.println("❌ 解析工单对象失败: " + e.getMessage());

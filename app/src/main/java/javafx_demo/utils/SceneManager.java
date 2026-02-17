@@ -135,12 +135,4 @@ public class SceneManager {
         ConfigManager config = ConfigManager.getInstance();
         switchScene("/userinfo.fxml", config.getAppTitle() + " - 个人信息");
     }
-
-    /**
-     * 切换到工单管理页面
-     */
-    public void switchToOrderForm() {
-        ConfigManager config = ConfigManager.getInstance();
-        switchScene("/orderform.fxml", config.getAppTitle() + " - 工单管理");
-    }
 }
