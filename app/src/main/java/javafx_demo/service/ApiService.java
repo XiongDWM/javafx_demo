@@ -1,7 +1,9 @@
 package javafx_demo.service;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import javafx_demo.utils.SessionContext;
 
 import java.io.File;
@@ -12,8 +14,10 @@ import java.util.*;
  */
 public class ApiService {
 
-    private static String toJson(Map<String, ?> data) {
-        return new JSONObject(data).toString();
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static String toJson(Map<String, ?> data) throws Exception {
+        return MAPPER.writeValueAsString(data);
     }
 
     // ==================== 登录 ====================
@@ -30,12 +34,12 @@ public class ApiService {
         body.put("softwareCode", ctx.getSoftwareCode());
 
         String resp = retryOnKeyExpired(() -> HttpService.post("/user/pal/login", toJson(body)));
-        JSONObject json = new JSONObject(resp);
-        if (!json.optBoolean("success")) {
-            String msg = json.has("data") ? String.valueOf(json.opt("data")) : "登录失败";
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) {
+            String msg = json.has("data") ? json.path("data").asText() : "登录失败";
             throw new RuntimeException(msg);
         }
-        return json.optString("data", ""); // JWT token
+        return json.path("data").asText(""); // JWT token
     }
 
     // ==================== 工单 ====================
@@ -123,14 +127,14 @@ public class ApiService {
      */
     public static void submitFindingRequest(long palId, boolean man, String description) throws Exception {
         // 构建 FindingRequest JSON
-        JSONObject body = new JSONObject();
+        ObjectNode body = JsonNodeFactory.instance.objectNode();
         body.put("man", man);
         body.put("description", description);
-        JSONObject palObj = new JSONObject();
+        ObjectNode palObj = JsonNodeFactory.instance.objectNode();
         palObj.put("id", palId);
-        body.put("palworld", palObj);
+        body.set("palworld", palObj);
 
-        String resp = retryOnKeyExpired(() -> HttpService.post("/finding/submit", body.toString()));
+        String resp = retryOnKeyExpired(() -> HttpService.post("/finding/submit", MAPPER.writeValueAsString(body)));
         checkSuccess(resp);
     }
 
@@ -142,13 +146,12 @@ public class ApiService {
      */
     public static String uploadImage(File file) throws Exception {
         String resp = HttpService.uploadFile(file);
-        JSONObject json = new JSONObject(resp);
-        if (!json.optBoolean("success")) {
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) {
             throw new RuntimeException("上传失败");
         }
         // data 是 FileLog 对象，取 id
-        JSONObject data = json.optJSONObject("data");
-        return data == null ? "" : data.optString("id", "");
+        return json.path("data").path("id").asText("");
     }
 
     // ==================== 统计 ====================
@@ -160,27 +163,31 @@ public class ApiService {
     public static Map<String, Object> getUserSummary(long userId) throws Exception {
         String resp = retryOnKeyExpired(
                 () -> HttpService.get("/statistic/user-summary?userId=" + userId));
-        JSONObject json = new JSONObject(resp);
-        if (!json.optBoolean("success")) {
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) {
             throw new RuntimeException("获取统计失败");
         }
-        JSONObject data = json.optJSONObject("data");
-        if (data == null) {
+        JsonNode data = json.path("data");
+        if (data.isMissingNode()) {
             return new LinkedHashMap<>();
         }
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalOrders", data.optInt("totalOrders"));
-        result.put("totalIncome", data.optDouble("totalIncome"));
+        result.put("totalOrders", data.path("totalOrders").asInt());
+        result.put("totalIncome", data.path("totalIncome").asDouble());
         return result;
     }
 
     // ==================== 工具方法 ====================
 
     private static void checkSuccess(String resp) {
-        JSONObject json = new JSONObject(resp);
-        if (!json.optBoolean("success")) {
-            String msg = json.has("data") ? String.valueOf(json.opt("data")) : "操作失败";
-            throw new RuntimeException(msg);
+        try {
+            JsonNode json = MAPPER.readTree(resp);
+            if (!json.path("success").asBoolean()) {
+                String msg = json.has("data") ? json.path("data").asText() : "操作失败";
+                throw new RuntimeException(msg);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("操作失败: " + e.getMessage());
         }
     }
 
@@ -212,57 +219,67 @@ public class ApiService {
     }
 
     private static PageResult parsePageResult(String resp) {
-        JSONObject json = new JSONObject(resp);
-        if (!json.optBoolean("success")) {
-            throw new RuntimeException("查询失败");
-        }
-        JSONObject data = json.optJSONObject("data");
-        if (data == null) {
-            return new PageResult();
-        }
-        PageResult pr = new PageResult();
-        pr.totalElements = data.optInt("totalElements", 0);
-        pr.totalPages = data.optInt("totalPages", 0);
-        pr.number = data.optInt("number", 0);
-        pr.size = data.optInt("size", 0);
+        try {
+            JsonNode json = MAPPER.readTree(resp);
+            if (!json.path("success").asBoolean()) {
+                throw new RuntimeException("查询失败");
+            }
+            JsonNode data = json.path("data");
+            if (data.isMissingNode()) {
+                return new PageResult();
+            }
+            PageResult pr = new PageResult();
+            pr.totalElements = data.path("totalElements").asInt(0);
+            pr.totalPages = data.path("totalPages").asInt(0);
+            pr.number = data.path("number").asInt(0);
+            pr.size = data.path("size").asInt(0);
 
-        JSONArray arr = data.optJSONArray("content");
-        if (arr != null) {
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject obj = arr.optJSONObject(i);
-                if (obj != null) {
-                    pr.content.add(jsonObjectToMap(obj));
+            JsonNode arr = data.path("content");
+            if (arr.isArray()) {
+                for (JsonNode el : arr) {
+                    pr.content.add(jsonNodeToMap(el));
                 }
             }
+            return pr;
+        } catch (Exception e) {
+            throw new RuntimeException("解析分页结果失败: " + e.getMessage());
         }
-        return pr;
     }
 
-    private static Map<String, Object> jsonObjectToMap(JSONObject obj) {
+    private static Map<String, Object> jsonNodeToMap(JsonNode node) {
         Map<String, Object> map = new LinkedHashMap<>();
-        for (String key : obj.keySet()) {
-            Object val = obj.get(key);
-            if (val == JSONObject.NULL) {
-                map.put(key, null);
-            } else if (val instanceof JSONObject) {
-                map.put(key, jsonObjectToMap((JSONObject) val));
-            } else if (val instanceof JSONArray) {
-                JSONArray arr = (JSONArray) val;
-                List<Object> list = new ArrayList<>();
-                for (int i = 0; i < arr.length(); i++) {
-                    Object item = arr.get(i);
-                    if (item instanceof JSONObject) {
-                        list.add(jsonObjectToMap((JSONObject) item));
-                    } else if (item != JSONObject.NULL) {
-                        list.add(item);
-                    } else {
-                        list.add(null);
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> {
+                JsonNode val = entry.getValue();
+                String key = entry.getKey();
+                if (val.isNull()) {
+                    map.put(key, null);
+                } else if (val.isObject()) {
+                    map.put(key, jsonNodeToMap(val));
+                } else if (val.isArray()) {
+                    List<Object> list = new ArrayList<>();
+                    for (JsonNode item : val) {
+                        if (item.isObject()) {
+                            list.add(jsonNodeToMap(item));
+                        } else if (item.isNull()) {
+                            list.add(null);
+                        } else if (item.isNumber()) {
+                            list.add(item.asDouble());
+                        } else if (item.isBoolean()) {
+                            list.add(item.asBoolean());
+                        } else {
+                            list.add(item.asText());
+                        }
                     }
+                    map.put(key, list);
+                } else if (val.isNumber()) {
+                    map.put(key, val.asDouble());
+                } else if (val.isBoolean()) {
+                    map.put(key, val.asBoolean());
+                } else {
+                    map.put(key, val.asText());
                 }
-                map.put(key, list);
-            } else {
-                map.put(key, val);
-            }
+            });
         }
         return map;
     }

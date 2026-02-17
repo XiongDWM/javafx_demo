@@ -18,7 +18,7 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     implementation libs.guava
-    implementation libs.orgjson
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
 
     // JavaFX依赖由插件自动管理，无需手动声明
 }
@@ -60,22 +60,33 @@ tasks.register('pack', Copy) {
     group = "distribution"
     description = "整合 JRE 和 EXE 到一个发布文件夹"
     
-    // 1. 确保先生成了 JRE 和 EXE
-    dependsOn(['jlink', 'createExe'])
+    def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+    
+    // 1. 确保先生成了 JRE；EXE 仅在 Windows 上生成
+    if (isWindows) {
+        dependsOn(['jlink', 'createExe'])
+    } else {
+        dependsOn(['jlink'])
+    }
     
     // 2. 定义输出目录
     into "${buildDir}/dist/pal_ending_app"
     
-    // 3. 拷贝 jlink 生成的内容到 jre 子目录
+    // 3. 拷贝 jlink 生成的内容到 env 子目录
     from("${buildDir}/env") {
         into 'env'
     }
     
-    // 4. 拷贝 exe 到根目录
-    from("${buildDir}/launch4j/${launch4j.outfile}")
+    // 4. 仅 Windows 下拷贝 exe
+    if (isWindows) {
+        from("${buildDir}/launch4j/${launch4j.outfile}")
+    }
     
     doLast {
         println "打包完成！请查看目录: ${buildDir}/dist/pal_ending_app"
+        if (!isWindows) {
+            println "注意: 当前为非 Windows 环境，未生成 .exe 文件。请在 Windows 上运行 './gradlew pack' 以生成完整发布包。"
+        }
     }
 }
 
