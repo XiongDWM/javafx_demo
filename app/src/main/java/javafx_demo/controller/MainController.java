@@ -5,15 +5,19 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
+import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx_demo.entity.Order;
 import javafx_demo.service.ApiService;
+import javafx_demo.service.SseClient;
 import javafx_demo.utils.ConfigManager;
 import javafx_demo.utils.SceneManager;
 import javafx_demo.utils.SessionContext;
@@ -33,6 +37,7 @@ public class MainController {
     @FXML private Button acceptOrderBtn;
     @FXML private Button findingRequestBtn;
     @FXML private Button offlineBtn;
+    @FXML private Button hangingBtn;
 
     // ---- Left nav ----
     @FXML private Button dashboardBtn;
@@ -84,6 +89,45 @@ public class MainController {
         showDashboard();
         // 异步加载今日工单
         loadOrders();
+        // 启动 SSE 监听
+        startSSE();
+    }
+
+    /** 启动 SSE 并注册事件回调 */
+    private void startSSE() {
+        SseClient sse = SseClient.getInstance();
+        // 监听订单事件 — 按 resourceId 增量更新
+        sse.on("ORDER", (domain, action, resourceId) -> {
+            switch (action) {
+                case "UPDATE" -> patchOrder(resourceId);
+                case "DELETE" -> ordersList.removeIf(o -> resourceId.equals(o.getOrderId()));
+                case "CREATE" -> loadOrders(); // 新建需要重新拉列表
+            }
+        });
+        sse.connect(java.util.List.of("ORDER"));
+    }
+
+    /** 增量更新单条订单 */
+    private void patchOrder(String orderId) {
+        Task<Map<String, Object>> task = new Task<>() {
+            @Override
+            protected Map<String, Object> call() throws Exception {
+                return ApiService.getOrderDetail(orderId);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            Map<String, Object> detail = task.getValue();
+            if (detail == null) return;
+            Order updated = Order.fromMap(detail);
+            for (int i = 0; i < ordersList.size(); i++) {
+                if (orderId.equals(ordersList.get(i).getOrderId())) {
+                    ordersList.set(i, updated);
+                    return;
+                }
+            }
+        });
+        task.setOnFailed(e -> System.err.println("增量更新失败: " + task.getException().getMessage()));
+        runAsync(task);
     }
 
     // ====================== 视图切换 (StackPane) ======================
@@ -128,12 +172,14 @@ public class MainController {
         incomeCol.setCellValueFactory(cd -> new SimpleStringProperty(String.valueOf(cd.getValue().getLowIncome())));
         issueDateCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getIssueDate()));
 
-        // 操作列: 续单 / 结束
+        // 操作列: 接单 / 续单 / 结束
         actionCol.setCellFactory(col -> new TableCell<>() {
+            private final Button acceptBtn = createBtn("接单", "#27ae60");
             private final Button renewBtn = createBtn("续单", "#3498db");
-            private final Button closeBtn = createBtn("结束", "#2ecc71");
+            private final Button closeBtn = createBtn("结束", "#e74c3c");
 
             {
+                acceptBtn.setOnAction(e -> handleAcceptOrderInRow(getTableView().getItems().get(getIndex())));
                 renewBtn.setOnAction(e -> handleContinueOrder(getTableView().getItems().get(getIndex())));
                 closeBtn.setOnAction(e -> handleCloseOrder(getTableView().getItems().get(getIndex())));
             }
@@ -146,6 +192,10 @@ public class MainController {
                 HBox box = new HBox(5);
                 box.setAlignment(Pos.CENTER);
                 String st = order.getStatus();
+                // 待接单 → 接单按钮
+                if ("PENDING".equals(st) || "THIRD_PARTY_WAITING".equals(st)) {
+                    box.getChildren().add(acceptBtn);
+                }
                 // 进行中的工单可以续单/结束
                 if ("IN_PROGRESS".equals(st) || "THIRD_PARTY_TAKEN".equals(st)) {
                     box.getChildren().addAll(renewBtn, closeBtn);
@@ -217,31 +267,122 @@ public class MainController {
 
     // ====================== 顶部按钮操作 ======================
 
-    /** 接单 — 弹出输入工单号对话框 */
+    /** 接单 — 弹出输入工单号 + 图片上传弹窗 */
     @FXML
     private void handleAcceptOrder() {
-        TextInputDialog dlg = new TextInputDialog();
-        dlg.setTitle("接单");
-        dlg.setHeaderText("请输入要接的工单号");
-        dlg.setContentText("工单ID:");
-        dlg.showAndWait().ifPresent(orderId -> {
-            if (orderId.isBlank()) return;
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "确定要开始接单吗？", ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("接单");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
             SessionContext ctx = SessionContext.getInstance();
-            statusLabel.setText("接单中...");
             Task<Void> task = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
-                    ApiService.acceptOrder(ctx.getUserId(), orderId.trim(), "");
+                    ApiService.changeStatus(ctx.getUserId(), "ACTIVE");
                     return null;
                 }
             };
             task.setOnSucceeded(e -> {
+                showInfo("已就绪");
+                statusLabel.setText("就绪");
+            });
+            task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
+            runAsync(task);
+        });
+    }
+
+    /** 行内接单按钮 — 直接弹图片上传弹窗 */
+    private void handleAcceptOrderInRow(Order order) {
+        showUploadDialogAndAccept(order.getOrderId());
+    }
+
+    /** 接单公共逻辑: 弹窗上传图片 → 预览 → 调用接单接口(picStart) */
+    private void showUploadDialogAndAccept(String orderId) {
+        Dialog<File> dialog = new Dialog<>();
+        dialog.setTitle("接单 - 上传开始截图");
+        dialog.setHeaderText("工单: " + orderId + "\n请上传开始截图");
+
+        ImageView preview = new ImageView();
+        preview.setFitWidth(300);
+        preview.setFitHeight(200);
+        preview.setPreserveRatio(true);
+        preview.setStyle("-fx-border-color: #ddd;");
+
+        Label fileLabel = new Label("未选择文件");
+        fileLabel.setStyle("-fx-text-fill: #7f8c8d;");
+
+        final File[] selectedFile = {null};
+        Button pickBtn = new Button("选择图片");
+        pickBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 15;");
+        pickBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("选择截图");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
+            File f = fc.showOpenDialog(contentStack.getScene().getWindow());
+            if (f != null) {
+                selectedFile[0] = f;
+                fileLabel.setText(f.getName());
+                preview.setImage(new Image(f.toURI().toString(), 300, 200, true, true));
+            }
+        });
+
+        ProgressIndicator loading = new ProgressIndicator();
+        loading.setPrefSize(24, 24);
+        loading.setVisible(false);
+        Label loadingLabel = new Label("上传中...");
+        loadingLabel.setVisible(false);
+        HBox loadingBox = new HBox(8, loading, loadingLabel);
+        loadingBox.setAlignment(Pos.CENTER);
+
+        VBox vb = new VBox(10, new HBox(10, pickBtn, fileLabel), preview, loadingBox);
+        vb.setPadding(new Insets(15));
+        vb.setAlignment(Pos.CENTER);
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(400);
+
+        ButtonType submitType = new ButtonType("确认接单", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
+        dialog.setResultConverter(bt -> null); // 手动控制关闭时机
+
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
+            SessionContext ctx = SessionContext.getInstance();
+            statusLabel.setText("接单中...");
+            submitBtn.setDisable(true);
+            pickBtn.setDisable(true);
+            loading.setVisible(true);
+            loadingLabel.setVisible(true);
+
+            File file = selectedFile[0];
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    String picStart = "";
+                    if (file != null) {
+                        picStart = ApiService.uploadImage(file);
+                    }
+                    ApiService.acceptOrder(ctx.getUserId(), orderId, picStart);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.close();
                 showInfo("接单成功: " + orderId);
                 loadOrders();
             });
-            task.setOnFailed(e -> showError("接单失败: " + task.getException().getMessage()));
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                pickBtn.setDisable(false);
+                loading.setVisible(false);
+                loadingLabel.setVisible(false);
+                showError("接单失败: " + task.getException().getMessage());
+            });
             runAsync(task);
         });
+
+        dialog.showAndWait();
     }
 
     /** 离线 */
@@ -263,6 +404,31 @@ public class MainController {
             task.setOnSucceeded(e -> {
                 showInfo("已设为离线");
                 statusLabel.setText("离线");
+            });
+            task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
+            runAsync(task);
+        });
+    }
+
+    /** 挂起 */
+    @FXML
+    private void handleHanging() {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "确定要挂起吗？", ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("挂起");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            SessionContext ctx = SessionContext.getInstance();
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    ApiService.changeStatus(ctx.getUserId(), "HANGING");
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                showInfo("已挂起");
+                statusLabel.setText("挂起");
             });
             task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
             runAsync(task);
@@ -342,47 +508,80 @@ public class MainController {
 
         // 二手单需要上传附加截图
         final File[] attachedFile = {null};
+        final Button[] pickBtnRef = {null};
         if (order.isSecondHand()) {
-            Button pickBtn = new Button("选择附加截图");
+            ImageView preview = new ImageView();
+            preview.setFitWidth(250);
+            preview.setFitHeight(160);
+            preview.setPreserveRatio(true);
+
             Label fileLabel = new Label("未选择");
+            fileLabel.setStyle("-fx-text-fill: #7f8c8d;");
+
+            Button pickBtn = new Button("选择附加截图");
+            pickBtnRef[0] = pickBtn;
+            pickBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
             pickBtn.setOnAction(e -> {
                 FileChooser fc = new FileChooser();
                 fc.setTitle("选择图片");
                 fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
                 File f = fc.showOpenDialog(contentStack.getScene().getWindow());
-                if (f != null) { attachedFile[0] = f; fileLabel.setText(f.getName()); }
+                if (f != null) {
+                    attachedFile[0] = f;
+                    fileLabel.setText(f.getName());
+                    preview.setImage(new Image(f.toURI().toString(), 250, 160, true, true));
+                }
             });
-            vb.getChildren().addAll(new Label("附加截图(二手单):"), new HBox(10, pickBtn, fileLabel));
+            vb.getChildren().addAll(
+                    new Separator(),
+                    new Label("附加截图(二手单必填):"),
+                    new HBox(10, pickBtn, fileLabel),
+                    preview);
         }
+        ProgressIndicator loading = new ProgressIndicator();
+        loading.setPrefSize(24, 24);
+        loading.setVisible(false);
+        Label loadingLabel = new Label("上传中...");
+        loadingLabel.setVisible(false);
+        HBox loadingBox = new HBox(8, loading, loadingLabel);
+        loadingBox.setAlignment(Pos.CENTER);
+
+        vb.getChildren().add(loadingBox);
         vb.setPadding(new Insets(10));
         dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(400);
 
         ButtonType submitType = new ButtonType("提交", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
-        dialog.setResultConverter(bt -> {
-            if (bt == submitType) {
-                Map<String, Object> r = new HashMap<>();
-                r.put("price", priceField.getText());
-                r.put("amount", amountField.getText());
-                r.put("unitType", unitBox.getValue());
-                r.put("file", attachedFile[0]);
-                return r;
-            }
-            return null;
-        });
+        dialog.setResultConverter(bt -> null); // 手动控制关闭时机
 
-        dialog.showAndWait().ifPresent(data -> {
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
             double price, amount;
             try {
-                price = Double.parseDouble((String) data.get("price"));
-                amount = Double.parseDouble((String) data.get("amount"));
+                price = Double.parseDouble(priceField.getText());
+                amount = Double.parseDouble(amountField.getText());
             } catch (NumberFormatException ex) {
                 showError("请输入有效数字");
                 return;
             }
-            String unitType = (String) data.get("unitType");
-            File fileToUpload = (File) data.get("file");
+            String unitType = unitBox.getValue();
+            File fileToUpload = attachedFile[0];
+
+            // 二手单必须上传图片
+            if (order.isSecondHand() && fileToUpload == null) {
+                showError("二手单续单必须上传附加截图");
+                return;
+            }
+
             statusLabel.setText("续单中...");
+            submitBtn.setDisable(true);
+            if (pickBtnRef[0] != null) {
+                pickBtnRef[0].setDisable(true);
+            }
+            loading.setVisible(true);
+            loadingLabel.setVisible(true);
 
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
@@ -391,42 +590,119 @@ public class MainController {
                         additionalPic = ApiService.uploadImage(fileToUpload);
                     }
                     ApiService.continueOrder(order.getOrderId(), price, amount, unitType, additionalPic);
+                    // 二手单上传图片后更新状态为 THIRD_PARTY_TAKEN_PROCESS_DONE
+                    if (order.isSecondHand() && additionalPic != null) {
+                        ApiService.updateSecondHandStatus(order.getOrderId(), "THIRD_PARTY_TAKEN_PROCESS_DONE");
+                    }
                     return null;
                 }
             };
             task.setOnSucceeded(e -> {
+                dialog.close();
                 showInfo("续单成功");
                 loadOrders();
             });
-            task.setOnFailed(e -> showError("续单失败: " + task.getException().getMessage()));
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                if (pickBtnRef[0] != null) {
+                    pickBtnRef[0].setDisable(false);
+                }
+                loading.setVisible(false);
+                loadingLabel.setVisible(false);
+                showError("续单失败: " + task.getException().getMessage());
+            });
             runAsync(task);
         });
+
+        dialog.showAndWait();
     }
 
-    /** 结束工单 — 必须上传截图 */
+    /** 结束工单 — 必须上传截图(带预览弹窗) */
     private void handleCloseOrder(Order order) {
-        FileChooser fc = new FileChooser();
-        fc.setTitle("选择结束截图（必需）");
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
-        File file = fc.showOpenDialog(contentStack.getScene().getWindow());
-        if (file == null) {
-            showError("结束工单需要上传截图");
-            return;
-        }
-        statusLabel.setText("结束工单中...");
-        Task<Void> task = new Task<>() {
-            @Override protected Void call() throws Exception {
-                String picId = ApiService.uploadImage(file);
-                ApiService.closeOrder(order.getOrderId(), picId);
-                return null;
+        Dialog<File> dialog = new Dialog<>();
+        dialog.setTitle("结束工单");
+        dialog.setHeaderText("请上传结束截图 — 工单: " + order.getOrderId());
+
+        ImageView preview = new ImageView();
+        preview.setFitWidth(300);
+        preview.setFitHeight(200);
+        preview.setPreserveRatio(true);
+
+        Label fileLabel = new Label("未选择");
+        fileLabel.setStyle("-fx-text-fill: #7f8c8d;");
+
+        final File[] selected = {null};
+        Button pickBtn = new Button("选择截图");
+        pickBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
+        pickBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("选择结束截图");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
+            File f = fc.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
+            if (f != null) {
+                selected[0] = f;
+                fileLabel.setText(f.getName());
+                preview.setImage(new Image(f.toURI().toString(), 300, 200, true, true));
             }
-        };
-        task.setOnSucceeded(e -> {
-            showInfo("工单已完成: " + order.getOrderId());
-            loadOrders();
         });
-        task.setOnFailed(e -> showError("关闭工单失败: " + task.getException().getMessage()));
-        runAsync(task);
+
+        ProgressIndicator loading = new ProgressIndicator();
+        loading.setPrefSize(24, 24);
+        loading.setVisible(false);
+        Label loadingLabel = new Label("上传中...");
+        loadingLabel.setVisible(false);
+        HBox loadingBox = new HBox(8, loading, loadingLabel);
+        loadingBox.setAlignment(Pos.CENTER);
+
+        VBox vb = new VBox(10,
+            new HBox(10, pickBtn, fileLabel),
+            preview,
+            loadingBox);
+        vb.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(400);
+
+        ButtonType submitType = new ButtonType("确认结束", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
+        dialog.setResultConverter(bt -> null); // 手动控制关闭时机
+
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
+            File file = selected[0];
+            if (file == null) {
+                showError("结束工单需要上传截图");
+                return;
+            }
+            statusLabel.setText("结束工单中...");
+            submitBtn.setDisable(true);
+            pickBtn.setDisable(true);
+            loading.setVisible(true);
+            loadingLabel.setVisible(true);
+
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    String picId = ApiService.uploadImage(file);
+                    ApiService.closeOrder(order.getOrderId(), picId);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.close();
+                showInfo("工单已完成: " + order.getOrderId());
+                loadOrders();
+            });
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                pickBtn.setDisable(false);
+                loading.setVisible(false);
+                loadingLabel.setVisible(false);
+                showError("关闭工单失败: " + task.getException().getMessage());
+            });
+            runAsync(task);
+        });
+
+        dialog.showAndWait();
     }
 
     // ====================== 退出登录 ======================
@@ -438,6 +714,7 @@ public class MainController {
         alert.setHeaderText(null);
         alert.showAndWait().ifPresent(response -> {
             if (response == ButtonType.OK) {
+                SseClient.getInstance().disconnect();
                 SessionContext.getInstance().clear();
                 SceneManager.getInstance().switchToLogin();
             }

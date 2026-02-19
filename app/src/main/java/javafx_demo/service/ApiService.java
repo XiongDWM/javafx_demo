@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import javafx_demo.utils.ConfigManager;
 import javafx_demo.utils.SessionContext;
 
 import java.io.File;
@@ -72,8 +73,8 @@ public class ApiService {
      * 接单开工
      */
     public static void acceptOrder(long palId, String orderId, String picStart) throws Exception {
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("palId", String.valueOf(palId));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("palId", palId);
         body.put("orderId", orderId);
         if (picStart != null && !picStart.isEmpty()) body.put("picStart", picStart);
         String resp = retryOnKeyExpired(() -> HttpService.post("/order/work", toJson(body)));
@@ -97,11 +98,12 @@ public class ApiService {
 
     /**
      * 结束工单
+     * @param picEnd oss 返回的文件 ID
      */
-    public static void closeOrder(String orderId, String picString) throws Exception {
+    public static void closeOrder(String orderId, String picEnd) throws Exception {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("orderId", orderId);
-        body.put("picString", picString);
+        body.put("picEnd", picEnd);
         String resp = retryOnKeyExpired(() -> HttpService.post("/order/close", toJson(body)));
         checkSuccess(resp);
     }
@@ -154,6 +156,30 @@ public class ApiService {
         return json.path("data").path("id").asText("");
     }
 
+    // ==================== 二手单状态更新 ====================
+
+    /**
+     * 更新二手单状态
+     * @param orderId 工单ID
+     * @param secondHandStatus 如 THIRD_PARTY_TAKEN_PROCESS_DONE
+     */
+    public static void updateSecondHandStatus(String orderId, String secondHandStatus) throws Exception {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("orderId", orderId);
+        body.put("secondHandStatus", secondHandStatus);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/order/secondHandStatus", toJson(body)));
+        checkSuccess(resp);
+    }
+
+    // ==================== 图片预览 ====================
+
+    /**
+     * 获取图片预览 URL
+     */
+    public static String getImagePreviewUrl(String fileId) {
+        return ConfigManager.getInstance().getServerBaseUrl() + "/preview/" + fileId;
+    }
+
     // ==================== 统计 ====================
 
     /**
@@ -175,6 +201,24 @@ public class ApiService {
         result.put("totalOrders", data.path("totalOrders").asInt());
         result.put("totalIncome", data.path("totalIncome").asDouble());
         return result;
+    }
+
+    // ==================== 单条订单查询 ====================
+
+    /**
+     * 通过 /order/list 按 orderId 过滤获取单条订单（不含 sections）
+     */
+    public static Map<String, Object> getOrderDetail(String orderId) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("pageNumber", 0);
+        body.put("pageSize", 1);
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orderId", orderId);
+        body.put("filters", filters);
+
+        String resp = retryOnKeyExpired(() -> HttpService.post("/order/list", toJson(body)));
+        PageResult pr = parsePageResult(resp);
+        return pr.content.isEmpty() ? null : pr.content.get(0);
     }
 
     // ==================== 工具方法 ====================

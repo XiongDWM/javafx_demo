@@ -20,12 +20,16 @@
             </Label>
             <Region HBox.hgrow="ALWAYS"/>
             <!-- 快捷操作 -->
-            <Button fx:id="acceptOrderBtn" text="接单" onAction="#handleAcceptOrder"
+            <Button fx:id="findingRequestBtn" text="创建找单请求" onAction="#handleFindingRequest"
+                    style="-fx-background-color: #1219f3; -fx-text-fill: white; -fx-cursor: hand; -fx-background-radius: 5; -fx-padding: 8 18;">
+                <font><Font size="13.0"/></font>
+            </Button>
+            <Button fx:id="acceptOrderBtn" text="就绪" onAction="#handleAcceptOrder"
                     style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-cursor: hand; -fx-background-radius: 5; -fx-padding: 8 18;">
                 <font><Font size="13.0"/></font>
             </Button>
-            <Button fx:id="findingRequestBtn" text="创建找单请求" onAction="#handleFindingRequest"
-                    style="-fx-background-color: #f39c12; -fx-text-fill: white; -fx-cursor: hand; -fx-background-radius: 5; -fx-padding: 8 18;">
+            <Button fx:id="hangingBtn" text="挂起" onAction="#handleHanging"
+                    style="-fx-background-color: #e58e15; -fx-text-fill: white; -fx-cursor: hand; -fx-background-radius: 5; -fx-padding: 8 18;">
                 <font><Font size="13.0"/></font>
             </Button>
             <Button fx:id="offlineBtn" text="离线" onAction="#handleOffline"
