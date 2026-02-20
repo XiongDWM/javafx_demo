@@ -203,7 +203,16 @@ public class ApiService {
         return result;
     }
 
-    // ==================== 单条订单查询 ====================
+    // ==================== 登出 ====================
+
+    /**
+     * 通知后端登出（设置用户状态 OFFLINE）
+     */
+    public static void logout() throws Exception {
+        retryOnKeyExpired(() -> HttpService.post("/user/logout", "{}"));
+    }
+
+    // ==================== 单条订单查询 ======================================
 
     /**
      * 通过 /order/list 按 orderId 过滤获取单条订单（不含 sections）

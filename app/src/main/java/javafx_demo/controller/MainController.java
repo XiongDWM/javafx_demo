@@ -31,6 +31,14 @@ import java.util.stream.Collectors;
  */
 public class MainController {
 
+    /** 空闲超时（毫秒）— 30 分钟 */
+    private static final long IDLE_TIMEOUT_MS = 30 * 60 * 1000L;
+    /** 空闲检查间隔（毫秒）— 1 分钟 */
+    private static final long IDLE_CHECK_INTERVAL_MS = 60_000L;
+
+    private volatile long lastActivityTime = System.currentTimeMillis();
+    private java.util.Timer idleTimer;
+
     // ---- Header ----
     @FXML private Label usernameLabel;
     @FXML private Button logoutButton;
@@ -91,6 +99,39 @@ public class MainController {
         loadOrders();
         // 启动 SSE 监听
         startSSE();
+        // 启动空闲超时检测
+        startIdleTimer();
+    }
+
+    /** 启动空闲超时检测：监听鼠标/键盘事件重置计时，定时检查是否超过 30 分钟 */
+    private void startIdleTimer() {
+        // 延迟到 Scene 准备好后注册事件过滤器
+        Platform.runLater(() -> {
+            var scene = contentStack.getScene();
+            if (scene != null) {
+                scene.addEventFilter(javafx.scene.input.InputEvent.ANY, e -> lastActivityTime = System.currentTimeMillis());
+            }
+        });
+
+        idleTimer = new java.util.Timer("IdleChecker", true);
+        idleTimer.scheduleAtFixedRate(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                if (System.currentTimeMillis() - lastActivityTime > IDLE_TIMEOUT_MS) {
+                    Platform.runLater(() -> forceLogout());
+                }
+            }
+        }, IDLE_CHECK_INTERVAL_MS, IDLE_CHECK_INTERVAL_MS);
+    }
+
+    /** 超时强制登出 */
+    private void forceLogout() {
+        if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
+        // 先通知后端
+        try { ApiService.logout(); } catch (Exception ignored) {}
+        SseClient.getInstance().disconnect();
+        SessionContext.getInstance().clear();
+        SceneManager.getInstance().switchToLogin();
     }
 
     /** 启动 SSE 并注册事件回调 */
@@ -714,6 +755,8 @@ public class MainController {
         alert.setHeaderText(null);
         alert.showAndWait().ifPresent(response -> {
             if (response == ButtonType.OK) {
+                if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
+                try { ApiService.logout(); } catch (Exception ignored) {}
                 SseClient.getInstance().disconnect();
                 SessionContext.getInstance().clear();
                 SceneManager.getInstance().switchToLogin();
