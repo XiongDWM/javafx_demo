@@ -319,7 +319,7 @@ public class MainController {
             FileChooser fc = new FileChooser();
             fc.setTitle("选择截图");
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
-            File f = fc.showOpenDialog(contentStack.getScene().getWindow());
+            File f = fc.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
             if (f != null) {
                 selectedFile[0] = f;
                 fileLabel.setText(f.getName());
@@ -525,7 +525,7 @@ public class MainController {
                 FileChooser fc = new FileChooser();
                 fc.setTitle("选择图片");
                 fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
-                File f = fc.showOpenDialog(contentStack.getScene().getWindow());
+                File f = fc.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
                 if (f != null) {
                     attachedFile[0] = f;
                     fileLabel.setText(f.getName());
