@@ -219,7 +219,7 @@ public class MainController {
         idCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getOrderId()));
         typeCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getTypeText()));
         gameTypeCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getGameType() != null ? cd.getValue().getGameType() : ""));
-        rankCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getRank() != null ? cd.getValue().getRank() : ""));
+        rankCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getRankInfo() != null ? cd.getValue().getRankInfo() : ""));
         customerCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getCustomer()));
         statusCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getStatusText()));
         amountCol.setCellValueFactory(cd -> new SimpleStringProperty(String.valueOf(cd.getValue().getAmount())));
@@ -841,7 +841,7 @@ public class MainController {
                 @Override protected Void call() throws Exception {
                     String picId = ApiService.uploadImage(file);
                     ApiService.closeOrder(order.getOrderId(), picId);
-                    updateUserStatus("ACTIVE"); // 结束后回到就绪状态
+                    updateUserStatus("ONLINE"); // 结束后回到就绪状态
                     return null;
                 }
             };

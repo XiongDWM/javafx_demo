@@ -24,7 +24,7 @@ public class Order {
     private String additionalPic;
     private String secondHandStatus;
     private String gameType;
-    private String rank;
+    private String rankInfo;
 
     // palworld (User 对象, @JsonManagedReference → 会在 JSON 中)
     private Map<String, Object> palworld;
@@ -51,7 +51,7 @@ public class Order {
         o.additionalPic = str(m.get("additionalPic"));
         o.secondHandStatus = str(m.get("secondHandStatus"));
         o.gameType = str(m.get("gameType"));
-        o.rank = str(m.get("rank"));
+        o.rankInfo = str(m.get("rankInfo"));
         Object uid = m.get("userId");
         if (uid instanceof Number n) o.userId = n.longValue();
         if (m.get("palworld") instanceof Map<?,?> p) o.palworld = (Map<String, Object>) p;
@@ -115,8 +115,8 @@ public class Order {
     public String getGameType() { return gameType; }
     public void setGameType(String gameType) { this.gameType = gameType; }
 
-    public String getRank() { return rank; }
-    public void setRank(String rank) { this.rank = rank; }
+    public String getRankInfo() { return rankInfo; }
+    public void setRank(String rankInfo) { this.rankInfo = rankInfo; }
 
     public Map<String, Object> getPalworld() { return palworld; }
     public void setPalworld(Map<String, Object> palworld) { this.palworld = palworld; }
