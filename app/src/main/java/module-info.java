@@ -4,6 +4,7 @@ module javafx_demo {
     requires javafx.fxml;
     requires java.sql;
     requires java.net.http;
+    requires java.desktop;
     requires com.fasterxml.jackson.databind;
 
     // JavaFX 的 FXML 通过反射访问 controller，所以需要 opens

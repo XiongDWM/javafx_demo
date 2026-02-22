@@ -103,7 +103,6 @@ public class SseClient {
                 System.err.println("[SSE] 连接异常: " + e.getMessage());
             }
             if (!running.get()) break;
-            // 自动重连
             try {
                 System.out.println("[SSE] " + RECONNECT_DELAY_MS + "ms 后重连...");
                 Thread.sleep(RECONNECT_DELAY_MS);

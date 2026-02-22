@@ -13,13 +13,17 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx_demo.entity.Order;
 import javafx_demo.service.ApiService;
 import javafx_demo.service.SseClient;
 import javafx_demo.utils.ConfigManager;
+import javafx_demo.utils.GameTypeStore;
 import javafx_demo.utils.SceneManager;
+import javafx_demo.utils.ScreenCaptureTool;
 import javafx_demo.utils.SessionContext;
 
 import java.io.File;
@@ -31,8 +35,8 @@ import java.util.stream.Collectors;
  */
 public class MainController {
 
-    /** 空闲超时（毫秒）— 30 分钟 */
-    private static final long IDLE_TIMEOUT_MS = 30 * 60 * 1000L;
+    /** 空闲超时（毫秒）— 1.5 小时 */
+    private static final long IDLE_TIMEOUT_MS = (long) (1.5 * 60 * 60 * 1000L);
     /** 空闲检查间隔（毫秒）— 1 分钟 */
     private static final long IDLE_CHECK_INTERVAL_MS = 60_000L;
 
@@ -41,6 +45,7 @@ public class MainController {
 
     // ---- Header ----
     @FXML private Label usernameLabel;
+    @FXML private Label userStatusLabel;
     @FXML private Button logoutButton;
     @FXML private Button acceptOrderBtn;
     @FXML private Button findingRequestBtn;
@@ -60,6 +65,8 @@ public class MainController {
     @FXML private TableView<Order> ordersTable;
     @FXML private TableColumn<Order, String> idCol;
     @FXML private TableColumn<Order, String> typeCol;
+    @FXML private TableColumn<Order, String> gameTypeCol;
+    @FXML private TableColumn<Order, String> rankCol;
     @FXML private TableColumn<Order, String> customerCol;
     @FXML private TableColumn<Order, String> statusCol;
     @FXML private TableColumn<Order, String> amountCol;
@@ -137,7 +144,12 @@ public class MainController {
     /** 启动 SSE 并注册事件回调 */
     private void startSSE() {
         SseClient sse = SseClient.getInstance();
-        // 监听订单事件 — 按 resourceId 增量更新
+
+        // 全局日志 — 方便调试所有事件
+        sse.on("*", (domain, action, resourceId) ->
+                System.out.println("[SSE] 收到事件: domain=" + domain + " action=" + action + " resourceId=" + resourceId));
+
+        // 监听订单事件 — 按 action 增量/全量更新
         sse.on("ORDER", (domain, action, resourceId) -> {
             switch (action) {
                 case "UPDATE" -> patchOrder(resourceId);
@@ -206,6 +218,8 @@ public class MainController {
     private void setupTableColumns() {
         idCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getOrderId()));
         typeCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getTypeText()));
+        gameTypeCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getGameType() != null ? cd.getValue().getGameType() : ""));
+        rankCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getRank() != null ? cd.getValue().getRank() : ""));
         customerCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getCustomer()));
         statusCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getStatusText()));
         amountCol.setCellValueFactory(cd -> new SimpleStringProperty(String.valueOf(cd.getValue().getAmount())));
@@ -327,6 +341,7 @@ public class MainController {
             task.setOnSucceeded(e -> {
                 showInfo("已就绪");
                 statusLabel.setText("就绪");
+                updateUserStatus("ACTIVE");
             });
             task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
             runAsync(task);
@@ -368,6 +383,24 @@ public class MainController {
             }
         });
 
+        Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
+        captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
+        captureBtn.setOnAction(e -> {
+            ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
+                if (file != null) {
+                    selectedFile[0] = file;
+                    fileLabel.setText("截图");
+                    preview.setImage(new Image(file.toURI().toString(), 300, 200, true, true));
+                }
+            });
+        });
+        dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
+            if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
+                captureBtn.fire();
+                ke.consume();
+            }
+        });
+
         ProgressIndicator loading = new ProgressIndicator();
         loading.setPrefSize(24, 24);
         loading.setVisible(false);
@@ -376,7 +409,7 @@ public class MainController {
         HBox loadingBox = new HBox(8, loading, loadingLabel);
         loadingBox.setAlignment(Pos.CENTER);
 
-        VBox vb = new VBox(10, new HBox(10, pickBtn, fileLabel), preview, loadingBox);
+        VBox vb = new VBox(10, new HBox(10, pickBtn, captureBtn, fileLabel), preview, loadingBox);
         vb.setPadding(new Insets(15));
         vb.setAlignment(Pos.CENTER);
         dialog.getDialogPane().setContent(vb);
@@ -411,6 +444,7 @@ public class MainController {
             task.setOnSucceeded(e -> {
                 dialog.close();
                 showInfo("接单成功: " + orderId);
+                updateUserStatus("BUSY");
                 loadOrders();
             });
             task.setOnFailed(e -> {
@@ -445,6 +479,7 @@ public class MainController {
             task.setOnSucceeded(e -> {
                 showInfo("已设为离线");
                 statusLabel.setText("离线");
+                updateUserStatus("OFFLINE");
             });
             task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
             runAsync(task);
@@ -470,6 +505,7 @@ public class MainController {
             task.setOnSucceeded(e -> {
                 showInfo("已挂起");
                 statusLabel.setText("挂起");
+                updateUserStatus("HANGING");
             });
             task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
             runAsync(task);
@@ -483,28 +519,70 @@ public class MainController {
         dialog.setTitle("创建找单请求");
         dialog.setHeaderText("填写找单信息");
 
-        // 表单
+        // 性别: 男单 / 女单 / 不限
         ToggleGroup genderGroup = new ToggleGroup();
         RadioButton manBtn = new RadioButton("男单");
         manBtn.setToggleGroup(genderGroup);
         manBtn.setSelected(true);
         RadioButton womanBtn = new RadioButton("女单/Ai");
         womanBtn.setToggleGroup(genderGroup);
+        RadioButton anyBtn = new RadioButton("不限");
+        anyBtn.setToggleGroup(genderGroup);
+
+        // 游戏类型下拉 + 新增按钮
+        ComboBox<String> gameTypeBox = new ComboBox<>();
+        gameTypeBox.getItems().addAll(GameTypeStore.load());
+        gameTypeBox.setPromptText("选择游戏");
+        gameTypeBox.setPrefWidth(160);
+        Button addGameBtn = new Button("+");
+        addGameBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 4 10;");
+        addGameBtn.setOnAction(e -> {
+            TextInputDialog inputDlg = new TextInputDialog();
+            inputDlg.setTitle("新增游戏");
+            inputDlg.setHeaderText(null);
+            inputDlg.setContentText("游戏名:");
+            inputDlg.showAndWait().ifPresent(name -> {
+                String trimmed = name.trim();
+                if (!trimmed.isEmpty() && !gameTypeBox.getItems().contains(trimmed)) {
+                    GameTypeStore.add(trimmed);
+                    gameTypeBox.getItems().add(trimmed);
+                }
+                if (!trimmed.isEmpty()) gameTypeBox.setValue(trimmed);
+            });
+        });
+
+        // 段位输入
+        TextField rankField = new TextField();
+        rankField.setPromptText("段位（如: 黄金、钻石）");
+
+        // 备注
         TextArea descField = new TextArea();
         descField.setPromptText("备注（可选）");
         descField.setPrefRowCount(3);
 
-        VBox vb = new VBox(10, new HBox(15, manBtn, womanBtn), descField);
+        VBox vb = new VBox(10,
+                new Label("性别:"), new HBox(15, manBtn, womanBtn, anyBtn),
+                new Label("游戏类型:"), new HBox(8, gameTypeBox, addGameBtn),
+                new Label("段位:"), rankField,
+                new Label("备注:"), descField);
         vb.setPadding(new Insets(10));
         dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(420);
 
         ButtonType submitType = new ButtonType("提交", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
         dialog.setResultConverter(bt -> {
             if (bt == submitType) {
                 Map<String, Object> r = new HashMap<>();
-                r.put("man", manBtn.isSelected());
+                // 不限 → null
+                if (anyBtn.isSelected()) {
+                    r.put("man", null);
+                } else {
+                    r.put("man", manBtn.isSelected());
+                }
                 r.put("description", descField.getText());
+                r.put("gameType", gameTypeBox.getValue());
+                r.put("rank", rankField.getText());
                 return r;
             }
             return null;
@@ -512,15 +590,21 @@ public class MainController {
 
         dialog.showAndWait().ifPresent(data -> {
             SessionContext ctx = SessionContext.getInstance();
-            boolean man = (boolean) data.get("man");
+            Boolean man = (Boolean) data.get("man");
             String desc = (String) data.get("description");
+            String gameType = (String) data.get("gameType");
+            String rank = (String) data.get("rank");
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    ApiService.submitFindingRequest(ctx.getUserId(), man, desc);
+                    ApiService.submitFindingRequest(ctx.getUserId(), man, desc, gameType, rank);
+                    ApiService.changeStatus(ctx.getUserId(), "ACTIVE");
                     return null;
                 }
             };
-            task.setOnSucceeded(e -> showInfo("找单请求已提交"));
+            task.setOnSucceeded(e -> {
+                showInfo("找单请求已提交");
+                updateUserStatus("PREPARE");
+            });
             task.setOnFailed(e -> showError("提交失败: " + task.getException().getMessage()));
             runAsync(task);
         });
@@ -539,7 +623,7 @@ public class MainController {
         TextField amountField = new TextField();
         amountField.setPromptText("数量");
         ChoiceBox<String> unitBox = new ChoiceBox<>();
-        unitBox.getItems().addAll("HOUR", "BATTLE", "DAY");
+        unitBox.getItems().addAll("HOUR", "BATTLE", "DAY"); //修改为中文显示，key值任然为英文
         unitBox.setValue(order.getUnitType() != null ? order.getUnitType() : "HOUR");
 
         VBox vb = new VBox(10,
@@ -573,10 +657,27 @@ public class MainController {
                     preview.setImage(new Image(f.toURI().toString(), 250, 160, true, true));
                 }
             });
+            Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
+            captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
+            captureBtn.setOnAction(e -> {
+                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
+                    if (file != null) {
+                        attachedFile[0] = file;
+                        fileLabel.setText("截图");
+                        preview.setImage(new Image(file.toURI().toString(), 250, 160, true, true));
+                    }
+                });
+            });
+            dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
+                if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
+                    captureBtn.fire();
+                    ke.consume();
+                }
+            });
             vb.getChildren().addAll(
                     new Separator(),
-                    new Label("附加截图(二手单必填):"),
-                    new HBox(10, pickBtn, fileLabel),
+                    new Label("附加结束截图(二手单必填):"),
+                    new HBox(10, pickBtn, captureBtn, fileLabel),
                     preview);
         }
         ProgressIndicator loading = new ProgressIndicator();
@@ -630,17 +731,14 @@ public class MainController {
                     if (fileToUpload != null) {
                         additionalPic = ApiService.uploadImage(fileToUpload);
                     }
-                    ApiService.continueOrder(order.getOrderId(), price, amount, unitType, additionalPic);
-                    // 二手单上传图片后更新状态为 THIRD_PARTY_TAKEN_PROCESS_DONE
-                    if (order.isSecondHand() && additionalPic != null) {
-                        ApiService.updateSecondHandStatus(order.getOrderId(), "THIRD_PARTY_TAKEN_PROCESS_DONE");
-                    }
+                    ApiService.continueOrder(order.getOrderId(), price, amount, unitType, additionalPic); // 后端接口自行处理二手单，无需区分方法调用
                     return null;
                 }
             };
             task.setOnSucceeded(e -> {
                 dialog.close();
                 showInfo("续单成功");
+                updateUserStatus("BUSY");
                 loadOrders();
             });
             task.setOnFailed(e -> {
@@ -687,6 +785,24 @@ public class MainController {
             }
         });
 
+        Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
+        captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
+        captureBtn.setOnAction(e -> {
+            ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
+                if (file != null) {
+                    selected[0] = file;
+                    fileLabel.setText("截图");
+                    preview.setImage(new Image(file.toURI().toString(), 300, 200, true, true));
+                }
+            });
+        });
+        dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
+            if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
+                captureBtn.fire();
+                ke.consume();
+            }
+        });
+
         ProgressIndicator loading = new ProgressIndicator();
         loading.setPrefSize(24, 24);
         loading.setVisible(false);
@@ -696,7 +812,7 @@ public class MainController {
         loadingBox.setAlignment(Pos.CENTER);
 
         VBox vb = new VBox(10,
-            new HBox(10, pickBtn, fileLabel),
+            new HBox(10, pickBtn, captureBtn, fileLabel),
             preview,
             loadingBox);
         vb.setPadding(new Insets(10));
@@ -725,6 +841,7 @@ public class MainController {
                 @Override protected Void call() throws Exception {
                     String picId = ApiService.uploadImage(file);
                     ApiService.closeOrder(order.getOrderId(), picId);
+                    updateUserStatus("ACTIVE"); // 结束后回到就绪状态
                     return null;
                 }
             };
@@ -768,6 +885,25 @@ public class MainController {
 
     public void setUserInfo(String username) {
         usernameLabel.setText(username);
+        updateUserStatus("ONLINE");
+    }
+
+    /** 更新顶栏用户状态指示器（彩色圆点 + 文字） */
+    private void updateUserStatus(String status) {
+        String dot = "●";
+        String text;
+        String color;
+        switch (status) {
+            case "ONLINE"  -> { text = "在线";  color = "white"; }
+            case "PREPARE" -> { text = "找单中"; color = "#00bcd4"; }
+            case "ACTIVE"  -> { text = "就绪";  color = "#27ae60"; }
+            case "HANGING" -> { text = "挂起";  color = "#e58e15"; }
+            case "OFFLINE" -> { text = "离线";  color = "#95a5a6"; }
+            case "BUSY", "IN_PROGRESS" -> { text = "忙碌"; color = "#e74c3c"; }
+            default        -> { text = status;  color = "#95a5a6"; }
+        }
+        userStatusLabel.setText(dot + " " + text);
+        userStatusLabel.setStyle("-fx-text-fill: " + color + ";");
     }
 
     private void setActiveButton(Button active) {

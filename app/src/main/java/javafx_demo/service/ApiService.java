@@ -103,7 +103,7 @@ public class ApiService {
     public static void closeOrder(String orderId, String picEnd) throws Exception {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("orderId", orderId);
-        body.put("picEnd", picEnd);
+        body.put("picString", picEnd);
         String resp = retryOnKeyExpired(() -> HttpService.post("/order/close", toJson(body)));
         checkSuccess(resp);
     }
@@ -127,11 +127,13 @@ public class ApiService {
     /**
      * 提交找单请求
      */
-    public static void submitFindingRequest(long palId, boolean man, String description) throws Exception {
-        // 构建 FindingRequest JSON
+    public static void submitFindingRequest(long palId, Boolean man, String description,
+                                              String gameType, String rank) throws Exception {
         ObjectNode body = JsonNodeFactory.instance.objectNode();
-        body.put("man", man);
+        if (man != null) body.put("man", man);
         body.put("description", description);
+        if (gameType != null && !gameType.isEmpty()) body.put("gameType", gameType);
+        if (rank != null && !rank.isEmpty()) body.put("rank", rank);
         ObjectNode palObj = JsonNodeFactory.instance.objectNode();
         palObj.put("id", palId);
         body.set("palworld", palObj);
@@ -161,13 +163,15 @@ public class ApiService {
     /**
      * 更新二手单状态
      * @param orderId 工单ID
-     * @param secondHandStatus 如 THIRD_PARTY_TAKEN_PROCESS_DONE
+     * @param picStart 上传的图片 ID（放在 additionalPic 字段）
      */
-    public static void updateSecondHandStatus(String orderId, String secondHandStatus) throws Exception {
+    public static void updateSecondHandStatus(String orderId, String picStart) throws Exception {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("orderId", orderId);
-        body.put("secondHandStatus", secondHandStatus);
-        String resp = retryOnKeyExpired(() -> HttpService.post("/order/secondHandStatus", toJson(body)));
+        picStart = (picStart != null && !picStart.isEmpty()) ? picStart : "";
+
+        body.put("additionalPic", picStart); // 二手单状态更新时，前端上传的图片放在 additionalPic 字段
+        String resp = retryOnKeyExpired(() -> HttpService.post("/order/secondHandStatus", toJson(body))); // 这里使用continue 
         checkSuccess(resp);
     }
 

@@ -140,6 +140,8 @@ public class HttpService {
 
     /**
      * 上传文件（multipart/form-data），响应不加密
+     * 
+     * upload 希望有截图工具，快捷键直接截图，
      * @param file 要上传的文件
      * @return 响应 JSON (明文)
      */
