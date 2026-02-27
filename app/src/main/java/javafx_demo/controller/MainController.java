@@ -18,6 +18,11 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx_demo.entity.Order;
+import javafx_demo.entity.BookOrder;
+import javafx_demo.entity.FindingRequest;
+import javafx_demo.entity.LeaveRecord;
+import javafx_demo.entity.SalaryAdvance;
+import javafx_demo.entity.MaintenanceRecord;
 import javafx_demo.service.ApiService;
 import javafx_demo.service.SseClient;
 import javafx_demo.utils.ConfigManager;
@@ -54,6 +59,7 @@ public class MainController {
 
     // ---- Left nav ----
     @FXML private Button dashboardBtn;
+    @FXML private Button bookOrderBtn;
     @FXML private Button dataManageBtn;
     @FXML private Button settingsBtn;
 
@@ -76,13 +82,83 @@ public class MainController {
     @FXML private TableColumn<Order, Void> actionCol;
     @FXML private Button refreshBtn;
 
+    // -- 找单请求 --
+    @FXML private TableView<FindingRequest> findingTable;
+    @FXML private TableColumn<FindingRequest, String> findingManCol;
+    @FXML private TableColumn<FindingRequest, String> findingDescCol;
+    @FXML private TableColumn<FindingRequest, String> findingTimeCol;
+    @FXML private TableColumn<FindingRequest, String> findingStatusCol;
+    @FXML private TableColumn<FindingRequest, Void> findingActionCol;
+    @FXML private Button refreshFindingBtn;
+
+    // -- 存单视图 --
+    @FXML private VBox bookOrderPane;
+    @FXML private TableView<BookOrder> bookOrdersTable;
+    @FXML private TableColumn<BookOrder, String> boCustomerCol;
+    @FXML private TableColumn<BookOrder, String> boCustomerIdCol;
+    @FXML private TableColumn<BookOrder, String> boDetailsCol;
+    @FXML private TableColumn<BookOrder, String> boAmountCol;
+    @FXML private TableColumn<BookOrder, String> boRemainingCol;
+    @FXML private TableColumn<BookOrder, String> boPriceCol;
+    @FXML private TableColumn<BookOrder, String> boPicCol;
+    @FXML private TableColumn<BookOrder, Void> boActionCol;
+    @FXML private TableColumn<BookOrder, String> boCreateTimeCol;
+    @FXML private Button addBookOrderBtn;
+    @FXML private Button refreshBookOrderBtn;
+    @FXML private Button boPrevPageBtn;
+    @FXML private Button boNextPageBtn;
+    @FXML private Label boPageLabel;
+
     // -- 统计视图 --
     @FXML private VBox statsPane;
     @FXML private Label totalOrdersLabel;
     @FXML private Label totalIncomeLabel;
 
-    // -- 设置视图 --
-    @FXML private VBox settingsPane;
+    // -- 我的视图 --
+    @FXML private ScrollPane settingsPane;
+
+    // -- 请假记录 --
+    @FXML private TableView<LeaveRecord> leaveTable;
+    @FXML private TableColumn<LeaveRecord, String> leaveTypeCol;
+    @FXML private TableColumn<LeaveRecord, String> leaveApplyTimeCol;
+    @FXML private TableColumn<LeaveRecord, String> leaveEndTimeCol;
+    @FXML private TableColumn<LeaveRecord, String> leaveStatusCol;
+    @FXML private Button addLeaveBtn;
+    @FXML private Button refreshLeaveBtn;
+    @FXML private Button leavePrevBtn;
+    @FXML private Button leaveNextBtn;
+    @FXML private Label leavePageLabel;
+
+    // -- 工资预支 --
+    @FXML private TableView<SalaryAdvance> advanceTable;
+    @FXML private TableColumn<SalaryAdvance, String> advanceNameCol;
+    @FXML private TableColumn<SalaryAdvance, String> advanceAmountCol;
+    @FXML private TableColumn<SalaryAdvance, String> advanceStatusCol;
+    @FXML private Button addAdvanceBtn;
+    @FXML private Button refreshAdvanceBtn;
+    @FXML private Button advancePrevBtn;
+    @FXML private Button advanceNextBtn;
+    @FXML private Label advancePageLabel;
+
+    // -- 维护记录 --
+    @FXML private TableView<MaintenanceRecord> maintTable;
+    @FXML private TableColumn<MaintenanceRecord, String> maintBossCol;
+    @FXML private TableColumn<MaintenanceRecord, String> maintWechatCol;
+    @FXML private TableColumn<MaintenanceRecord, String> maintTimeCol;
+    @FXML private TableColumn<MaintenanceRecord, String> maintLogCol;
+    @FXML private Button refreshMaintBtn;
+    @FXML private Button maintPrevBtn;
+    @FXML private Button maintNextBtn;
+    @FXML private Label maintPageLabel;
+    @FXML private VBox maintDetailPane;
+    @FXML private Label maintDetailTitle;
+    @FXML private ScrollPane maintDetailScroll;
+    @FXML private Label maintDetailContent;
+    @FXML private TextField maintInputField;
+    @FXML private HBox maintInputActions;
+    @FXML private Button maintConfirmBtn;
+    @FXML private Button maintCancelBtn;
+    @FXML private Button maintAddLogBtn;
 
     // ---- Bottom ----
     @FXML private Label statusLabel;
@@ -90,15 +166,46 @@ public class MainController {
 
     private List<Button> menuButtons;
     private ObservableList<Order> ordersList = FXCollections.observableArrayList();
+    private ObservableList<FindingRequest> findingList = FXCollections.observableArrayList();
+    private ObservableList<BookOrder> bookOrdersList = FXCollections.observableArrayList();
+    private int boCurrentPage = 0;
+    private int boTotalPages = 1;
+    private static final int BO_PAGE_SIZE = 20;
+
+    private ObservableList<LeaveRecord> leaveList = FXCollections.observableArrayList();
+    private int leaveCurrentPage = 0;
+    private int leaveTotalPages = 1;
+    private static final int LEAVE_PAGE_SIZE = 10;
+
+    private ObservableList<SalaryAdvance> advanceList = FXCollections.observableArrayList();
+    private int advanceCurrentPage = 0;
+    private int advanceTotalPages = 1;
+    private static final int ADVANCE_PAGE_SIZE = 10;
+
+    private ObservableList<MaintenanceRecord> maintList = FXCollections.observableArrayList();
+    private int maintCurrentPage = 0;
+    private int maintTotalPages = 1;
+    private static final int MAINT_PAGE_SIZE = 10;
+    private MaintenanceRecord selectedMaintRecord = null;
 
     @FXML
     public void initialize() {
         ConfigManager config = ConfigManager.getInstance();
         versionLabel.setText("Version " + config.getAppVersion());
 
-        menuButtons = Arrays.asList(dashboardBtn, dataManageBtn, settingsBtn);
+        menuButtons = Arrays.asList(dashboardBtn, bookOrderBtn, dataManageBtn, settingsBtn);
         setupTableColumns();
+        setupFindingTableColumns();
+        setupBookOrderTableColumns();
+        setupLeaveTableColumns();
+        setupAdvanceTableColumns();
+        setupMaintTableColumns();
         ordersTable.setItems(ordersList);
+        findingTable.setItems(findingList);
+        bookOrdersTable.setItems(bookOrdersList);
+        leaveTable.setItems(leaveList);
+        advanceTable.setItems(advanceList);
+        maintTable.setItems(maintList);
 
         // 默认显示工单列表
         showDashboard();
@@ -157,7 +264,18 @@ public class MainController {
                 case "CREATE" -> loadOrders(); // 新建需要重新拉列表
             }
         });
-        sse.connect(java.util.List.of("ORDER"));
+
+        // 监听找单请求事件 — 直接刷新全量列表
+        sse.on("FINDING_REQUEST", (domain, action, resourceId) -> {
+            Platform.runLater(() -> loadFindingList());
+        });
+
+        // 监听存单事件 — 直接刷新列表
+        sse.on("BOOKING", (domain, action, resourceId) -> {
+            Platform.runLater(() -> loadBookOrders());
+        });
+
+        sse.connect(java.util.List.of("ORDER", "FINDING_REQUEST", "BOOKING"));
     }
 
     /** 增量更新单条订单 */
@@ -196,6 +314,7 @@ public class MainController {
         setActiveButton(dashboardBtn);
         showOnly(orderPane);
         statusLabel.setText("工单列表");
+        loadFindingList();
     }
 
     @FXML
@@ -210,7 +329,18 @@ public class MainController {
     private void showSettings() {
         setActiveButton(settingsBtn);
         showOnly(settingsPane);
-        statusLabel.setText("设置");
+        statusLabel.setText("我的");
+        loadLeaveRecords();
+        loadAdvanceRecords();
+        loadMaintRecords();
+    }
+
+    @FXML
+    private void showBookOrders() {
+        setActiveButton(bookOrderBtn);
+        showOnly(bookOrderPane);
+        statusLabel.setText("存单列表");
+        loadBookOrders();
     }
 
     // ====================== 表格列绑定 ======================
@@ -266,6 +396,134 @@ public class MainController {
                 + "-fx-padding: 4 12; -fx-background-radius: 3; -fx-font-size: 11;");
         return b;
     }
+
+    // ====================== 找单请求表格 ======================
+
+    private void setupFindingTableColumns() {
+        // 性别: null=不限, true=男单, false=女单
+        findingManCol.setCellValueFactory(cd -> {
+            Boolean man = cd.getValue().getMan();
+            return new SimpleStringProperty(man == null ? "不限" : (man ? "男单" : "女单"));
+        });
+        findingManCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); setStyle(""); return; }
+                setText(item);
+                String color;
+                switch (item) {
+                    case "男单" -> color = "-fx-text-fill: #2980b9;";
+                    case "女单" -> color = "-fx-text-fill: #e84393;";
+                    default -> color = "-fx-text-fill: #7f8c8d;";
+                }
+                setStyle("-fx-alignment: CENTER; " + color + " -fx-font-weight: bold;");
+            }
+        });
+
+        findingDescCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getDescription() != null ? cd.getValue().getDescription() : ""));
+
+        // 请求时间: 只显示 HH:mm
+        findingTimeCol.setCellValueFactory(cd -> {
+            String raw = cd.getValue().getRequestedAt();
+            if (raw == null || raw.isEmpty()) return new SimpleStringProperty("-");
+            // 取时间部分 "HH:mm"
+            if (raw.contains("T")) {
+                String timePart = raw.substring(raw.indexOf("T") + 1);
+                if (timePart.length() >= 5) return new SimpleStringProperty(timePart.substring(0, 5));
+            }
+            if (raw.contains(" ") && raw.length() > 11) {
+                String timePart = raw.substring(raw.indexOf(" ") + 1);
+                if (timePart.length() >= 5) return new SimpleStringProperty(timePart.substring(0, 5));
+            }
+            return new SimpleStringProperty(raw);
+        });
+
+        // 状态: null=撤销, true=已找到, false=寻找中
+        findingStatusCol.setCellValueFactory(cd -> {
+            Boolean f = cd.getValue().getFulfilled();
+            return new SimpleStringProperty(f == null ? "撤销" : (f ? "已找到" : "寻找中"));
+        });
+        findingStatusCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); setStyle(""); return; }
+                setText(item);
+                String color;
+                switch (item) {
+                    case "已找到" -> color = "-fx-text-fill: #27ae60;";
+                    case "寻找中" -> color = "-fx-text-fill: #e67e22;";
+                    default -> color = "-fx-text-fill: #95a5a6;";
+                }
+                setStyle("-fx-alignment: CENTER; " + color + " -fx-font-weight: bold;");
+            }
+        });
+
+        // 操作列: 撤销按钮
+        findingActionCol.setCellFactory(col -> new TableCell<>() {
+            private final Button cancelBtn = createBtn("撤销", "#e74c3c");
+            {
+                cancelBtn.setOnAction(e -> {
+                    FindingRequest req = getTableView().getItems().get(getIndex());
+                    handleCancelFinding(req);
+                });
+            }
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                FindingRequest req = getTableView().getItems().get(getIndex());
+                // 只有"寻找中"状态才显示撤销按钮
+                if (req.getFulfilled() != null && !req.getFulfilled()) {
+                    setGraphic(cancelBtn);
+                } else {
+                    setGraphic(null);
+                }
+            }
+        });
+    }
+
+    private void handleCancelFinding(FindingRequest req) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "确定要撤销此找单请求吗？", ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("撤销找单");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    ApiService.cancelFindingRequest(req.getId());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                showInfo("已撤销");
+                loadFindingList();
+            });
+            task.setOnFailed(e -> showError("撤销失败: " + task.getException().getMessage()));
+            runAsync(task);
+        });
+    }
+
+    private void loadFindingList() {
+        Task<List<Map<String, Object>>> task = new Task<>() {
+            @Override
+            protected List<Map<String, Object>> call() throws Exception {
+                return ApiService.queryFindingList();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            List<FindingRequest> items = task.getValue().stream()
+                    .map(FindingRequest::fromMap).collect(Collectors.toList());
+            findingList.setAll(items);
+        });
+        task.setOnFailed(e -> showError("加载找单请求失败: " + task.getException().getMessage()));
+        runAsync(task);
+    }
+
+    @FXML
+    private void handleRefreshFinding() { loadFindingList(); }
 
     // ====================== 数据加载 ======================
 
@@ -422,6 +680,10 @@ public class MainController {
         Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
         submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
             evt.consume();
+            if (selectedFile[0] == null) {
+                showError("请先上传或截取开始截图");
+                return;
+            }
             SessionContext ctx = SessionContext.getInstance();
             statusLabel.setText("接单中...");
             submitBtn.setDisable(true);
@@ -433,10 +695,7 @@ public class MainController {
             Task<Void> task = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
-                    String picStart = "";
-                    if (file != null) {
-                        picStart = ApiService.uploadImage(file);
-                    }
+                    String picStart = ApiService.uploadImage(file);
                     ApiService.acceptOrder(ctx.getUserId(), orderId, picStart);
                     return null;
                 }
@@ -556,15 +815,16 @@ public class MainController {
         rankField.setPromptText("段位（如: 黄金、钻石）");
 
         // 备注
-        TextArea descField = new TextArea();
-        descField.setPromptText("备注（可选）");
-        descField.setPrefRowCount(3);
+        // TextArea descField = new TextArea();
+        // descField.setPromptText("备注（可选）");
+        // descField.setPrefRowCount(3);
 
         VBox vb = new VBox(10,
-                new Label("性别:"), new HBox(15, manBtn, womanBtn, anyBtn),
-                new Label("游戏类型:"), new HBox(8, gameTypeBox, addGameBtn),
-                new Label("段位:"), rankField,
-                new Label("备注:"), descField);
+                new Label("性别:"), new HBox(15, manBtn, womanBtn, anyBtn)
+                ,new Label("游戏类型:"), new HBox(8, gameTypeBox, addGameBtn)
+                ,new Label("段位:"), rankField
+                // , new Label("备注:"), descField
+            );
         vb.setPadding(new Insets(10));
         dialog.getDialogPane().setContent(vb);
         dialog.getDialogPane().setPrefWidth(420);
@@ -580,7 +840,7 @@ public class MainController {
                 } else {
                     r.put("man", manBtn.isSelected());
                 }
-                r.put("description", descField.getText());
+                // r.put("description", descField.getText());
                 r.put("gameType", gameTypeBox.getValue());
                 r.put("rank", rankField.getText());
                 return r;
@@ -591,12 +851,12 @@ public class MainController {
         dialog.showAndWait().ifPresent(data -> {
             SessionContext ctx = SessionContext.getInstance();
             Boolean man = (Boolean) data.get("man");
-            String desc = (String) data.get("description");
+            // String desc = (String) data.get("description");
             String gameType = (String) data.get("gameType");
             String rank = (String) data.get("rank");
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    ApiService.submitFindingRequest(ctx.getUserId(), man, desc, gameType, rank);
+                    ApiService.submitFindingRequest(ctx.getUserId(), man, gameType, rank);
                     ApiService.changeStatus(ctx.getUserId(), "ACTIVE");
                     return null;
                 }
@@ -841,7 +1101,7 @@ public class MainController {
                 @Override protected Void call() throws Exception {
                     String picId = ApiService.uploadImage(file);
                     ApiService.closeOrder(order.getOrderId(), picId);
-                    updateUserStatus("ONLINE"); // 结束后回到就绪状态
+                    updateUserStatus("ONLINE"); // 结束后回到在线状态
                     return null;
                 }
             };
@@ -888,7 +1148,6 @@ public class MainController {
         updateUserStatus("ONLINE");
     }
 
-    /** 更新顶栏用户状态指示器（彩色圆点 + 文字） */
     private void updateUserStatus(String status) {
         String dot = "●";
         String text;
@@ -899,7 +1158,7 @@ public class MainController {
             case "ACTIVE"  -> { text = "就绪";  color = "#27ae60"; }
             case "HANGING" -> { text = "挂起";  color = "#e58e15"; }
             case "OFFLINE" -> { text = "离线";  color = "#95a5a6"; }
-            case "BUSY", "IN_PROGRESS" -> { text = "忙碌"; color = "#e74c3c"; }
+            case "BUSY" -> { text = "忙碌"; color = "#e74c3c"; }
             default        -> { text = status;  color = "#95a5a6"; }
         }
         userStatusLabel.setText(dot + " " + text);
@@ -940,5 +1199,967 @@ public class MainController {
             a.setContentText(msg);
             a.showAndWait();
         });
+    }
+
+    // ====================== 存单表格列绑定 ======================
+
+    private void setupBookOrderTableColumns() {
+        boCustomerCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getCustomer() != null ? cd.getValue().getCustomer() : ""));
+        boCustomerIdCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getCustomerId() != null ? cd.getValue().getCustomerId() : ""));
+        boDetailsCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getDetails() != null ? cd.getValue().getDetails() : ""));
+        boAmountCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                String.valueOf(cd.getValue().getAmount())));
+        boRemainingCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                String.valueOf(cd.getValue().getRemaining())));
+        boRemainingCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setGraphic(null);
+                    setText(null);
+                    return;
+                }
+                BookOrder bo = getTableView().getItems().get(getIndex());
+                double remaining = bo.getRemaining();
+                double amount = bo.getAmount();
+                int pct = amount > 0 ? (int) Math.round(remaining / amount * 100) : 0;
+
+                String barColor;
+                if (pct <= 0) barColor = "#bdc3c7";
+                else if (pct <= 25) barColor = "#e74c3c";
+                else if (pct <= 50) barColor = "#f1c40f";
+                else if (pct <= 75) barColor = "#7ec87e";
+                else barColor = "#27ae60";
+
+                Label valueLabel = new Label(String.valueOf(remaining));
+                Label pctLabel = new Label(pct + "%");
+                pctLabel.setMinWidth(35);
+                pctLabel.setStyle("-fx-font-size: 11; -fx-text-fill: #555;");
+
+                double barWidth = 60;
+                double fillWidth = Math.min(pct, 100) / 100.0 * barWidth;
+
+                Region bgBar = new Region();
+                bgBar.setPrefSize(barWidth, 6);
+                bgBar.setMinSize(barWidth, 6);
+                bgBar.setMaxSize(barWidth, 6);
+                bgBar.setStyle("-fx-background-color: #ecf0f1; -fx-background-radius: 3;");
+
+                Region fillBar = new Region();
+                fillBar.setPrefSize(fillWidth, 6);
+                fillBar.setMinSize(fillWidth, 6);
+                fillBar.setMaxSize(fillWidth, 6);
+                fillBar.setStyle("-fx-background-color: " + barColor + "; -fx-background-radius: 3;");
+
+                StackPane barPane = new StackPane(bgBar, fillBar);
+                StackPane.setAlignment(fillBar, Pos.CENTER_LEFT);
+
+                HBox box = new HBox(5, valueLabel, pctLabel, barPane);
+                box.setAlignment(Pos.CENTER_LEFT);
+                setGraphic(box);
+                setText(null);
+            }
+        });
+        boPriceCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                String.valueOf(cd.getValue().getPrice())));
+        boCreateTimeCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getCreateTime() != null ? cd.getValue().getCreateTime() : ""));
+
+        // 图片列: 有值显示"查看"链接，无值显示"-"
+        boPicCol.setCellFactory(col -> new TableCell<>() {
+            private final Hyperlink viewLink = new Hyperlink("查看");
+            {
+                viewLink.setOnAction(e -> {
+                    BookOrder bo = getTableView().getItems().get(getIndex());
+                    showImagePreviewDialog(bo.getPicProvence());
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                BookOrder bo = getTableView().getItems().get(getIndex());
+                String pic = bo.getPicProvence();
+                if (pic != null && !pic.isBlank()) {
+                    setGraphic(viewLink);
+                } else {
+                    setGraphic(new Label("-"));
+                }
+            }
+        });
+
+        // 操作列: 开始 / 关闭 / 上传图片 / 续存
+        boActionCol.setCellFactory(col -> new TableCell<>() {
+            private final Button startBtn = createBtn("开始", "#27ae60");
+            private final Button closeBtn = createBtn("关闭", "#e74c3c");
+            private final Button uploadPicBtn = createBtn("上传图片", "#3498db");
+            private final Button renewBtn = createBtn("续存", "#e58e15");
+
+            {
+                startBtn.setOnAction(e -> handleStartBookOrder(getTableView().getItems().get(getIndex())));
+                closeBtn.setOnAction(e -> handleCloseBookOrder(getTableView().getItems().get(getIndex())));
+                uploadPicBtn.setOnAction(e -> handleUploadBookOrderPic(getTableView().getItems().get(getIndex())));
+                renewBtn.setOnAction(e -> handleRenewBookOrder(getTableView().getItems().get(getIndex())));
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                HBox box = new HBox(5);
+                box.setAlignment(Pos.CENTER);
+                box.getChildren().addAll(startBtn, closeBtn, uploadPicBtn, renewBtn);
+                setGraphic(box);
+            }
+        });
+    }
+
+    // ====================== 存单数据加载 ======================
+
+    @FXML
+    private void handleRefreshBookOrders() {
+        loadBookOrders();
+    }
+
+    private void loadBookOrders() {
+        statusLabel.setText("加载存单中...");
+        Task<ApiService.PageResult> task = new Task<>() {
+            @Override
+            protected ApiService.PageResult call() throws Exception {
+                return ApiService.queryBookOrders(boCurrentPage, BO_PAGE_SIZE, null);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            ApiService.PageResult pr = task.getValue();
+            List<BookOrder> orders = pr.content.stream()
+                    .map(BookOrder::fromMap).collect(Collectors.toList());
+            bookOrdersList.setAll(orders);
+            boTotalPages = Math.max(pr.totalPages, 1);
+            boPageLabel.setText("第 " + (boCurrentPage + 1) + " 页 / 共 " + boTotalPages + " 页");
+            boPrevPageBtn.setDisable(boCurrentPage <= 0);
+            boNextPageBtn.setDisable(boCurrentPage >= boTotalPages - 1);
+            statusLabel.setText("共 " + pr.totalElements + " 条存单");
+        });
+        task.setOnFailed(e -> {
+            statusLabel.setText("加载存单失败");
+            showError("加载存单失败: " + task.getException().getMessage());
+        });
+        runAsync(task);
+    }
+
+    @FXML
+    private void handleBoPrevPage() {
+        if (boCurrentPage > 0) {
+            boCurrentPage--;
+            loadBookOrders();
+        }
+    }
+
+    @FXML
+    private void handleBoNextPage() {
+        if (boCurrentPage < boTotalPages - 1) {
+            boCurrentPage++;
+            loadBookOrders();
+        }
+    }
+
+    // ====================== 存单操作 ======================
+
+    /** 开始 — 从存单创建 order */
+    private void handleStartBookOrder(BookOrder bo) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "确定要从此存单创建工单吗？", ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("开始存单");
+        confirm.setHeaderText("客户: " + bo.getCustomer());
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt != ButtonType.OK) return;
+            statusLabel.setText("创建工单中...");
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    ApiService.startBookOrder(bo.getId());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                showInfo("工单已从存单创建");
+                loadBookOrders();
+            });
+            task.setOnFailed(e -> showError("操作失败: " + task.getException().getMessage()));
+            runAsync(task);
+        });
+    }
+
+    /** 关闭存单 — TODO: 待后端接口实现 */
+    private void handleCloseBookOrder(BookOrder bo) {
+        // TODO: 调用关闭存单接口 /bookOrder/close
+        showInfo("关闭存单功能开发中...");
+    }
+
+    /** 上传图片到存单 — TODO: 待后端接口实现 */
+    private void handleUploadBookOrderPic(BookOrder bo) {
+        // TODO: 调用上传图片到存单接口 /bookOrder/uploadPic
+        showInfo("上传图片功能开发中...");
+    }
+
+    /** 续存 — 弹窗输入续单单数、总价、图片 */
+    private void handleRenewBookOrder(BookOrder bo) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("续存");
+        dialog.setHeaderText("客户: " + bo.getCustomer() + " | 微信号: " + (bo.getCustomerId() != null ? bo.getCustomerId() : ""));
+
+        Spinner<Double> amountField = new Spinner<>(0, 999999, 0, 1);
+        amountField.setEditable(true);
+        amountField.setPrefWidth(200);
+        Spinner<Double> priceField = new Spinner<>(0, 999999, 0, 0.01);
+        priceField.setEditable(true);
+        priceField.setPrefWidth(200);
+
+        // 多图上传区域
+        List<File> imageFiles = new ArrayList<>();
+        List<String> uploadedImageIds = new ArrayList<>();
+        FlowPane imagePane = new FlowPane(10, 10);
+        imagePane.setPrefWrapLength(400);
+
+        // 添加按钮（虚线框 + 号）
+        Button addImageBtn = createAddImageButton();
+        imagePane.getChildren().add(addImageBtn);
+
+        addImageBtn.setOnAction(e -> showImagePickerPopup(dialog, imageFiles, uploadedImageIds, imagePane, addImageBtn));
+
+        // 截图快捷键
+        dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
+            if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
+                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
+                    if (file != null) {
+                        addImageToPane(file, imageFiles, uploadedImageIds, imagePane, addImageBtn, dialog);
+                    }
+                });
+                ke.consume();
+            }
+        });
+
+        ProgressIndicator loading = new ProgressIndicator();
+        loading.setPrefSize(24, 24);
+        loading.setVisible(false);
+        Label loadingLabel = new Label("提交中...");
+        loadingLabel.setVisible(false);
+        HBox loadingBox = new HBox(8, loading, loadingLabel);
+        loadingBox.setAlignment(Pos.CENTER);
+
+        VBox vb = new VBox(10,
+                new Label("续单单数:"), amountField,
+                new Label("总价:"), priceField,
+                new Label("图片(可选):"), imagePane,
+                loadingBox);
+        vb.setPadding(new Insets(15));
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(460);
+
+        ButtonType submitType = new ButtonType("提交", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
+        dialog.setResultConverter(bt -> null);
+
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
+            double amount;
+            double price;
+            try {
+                amount = Double.parseDouble(amountField.getEditor().getText().trim());
+            } catch (NumberFormatException ex) {
+                showError("续单单数格式错误"); return;
+            }
+            try {
+                price = Double.parseDouble(priceField.getEditor().getText().trim());
+            } catch (NumberFormatException ex) {
+                showError("总价格式错误"); return;
+            }
+            if (amount <= 0) { showError("续单单数必须大于0"); return; }
+            if (price <= 0) { showError("总价必须大于0"); return; }
+
+            submitBtn.setDisable(true);
+            loading.setVisible(true);
+            loadingLabel.setVisible(true);
+
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    // 上传尚未上传的图片
+                    for (int i = 0; i < imageFiles.size(); i++) {
+                        if (i >= uploadedImageIds.size() || uploadedImageIds.get(i) == null) {
+                            String id = ApiService.uploadImage(imageFiles.get(i));
+                            if (i < uploadedImageIds.size()) {
+                                uploadedImageIds.set(i, id);
+                            } else {
+                                uploadedImageIds.add(id);
+                            }
+                        }
+                    }
+                    String picProvence = uploadedImageIds.isEmpty() ? null : String.join(",", uploadedImageIds);
+                    // TODO: 调用续存接口 /bookOrder/renew (amount, price, picProvence, bookOrderId=bo.getId())
+                    // 目前先打印参数，待后端实现后替换
+                    System.out.println("[续存] bookOrderId=" + bo.getId() + " amount=" + amount + " price=" + price + " pic=" + picProvence);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.close();
+                showInfo("续存提交成功");
+                loadBookOrders();
+            });
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                loading.setVisible(false);
+                loadingLabel.setVisible(false);
+                showError("续存失败: " + task.getException().getMessage());
+            });
+            runAsync(task);
+        });
+
+        dialog.showAndWait();
+    }
+
+    // ====================== 新增存单 ======================
+
+    @FXML
+    private void handleAddBookOrder() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("新增存单");
+        dialog.setHeaderText(null);
+
+        TextField customerField = new TextField();
+        customerField.setPromptText("客户称呼");
+        TextField customerIdField = new TextField();
+        customerIdField.setPromptText("微信号");
+        TextArea detailsField = new TextArea();
+        detailsField.setPromptText("备注额外信息（可选）");
+        detailsField.setPrefRowCount(3);
+        Spinner<Double> amountField = new Spinner<>(0, 999999, 0, 1);
+        amountField.setEditable(true);
+        amountField.setPrefWidth(200);
+        Spinner<Double> priceField = new Spinner<>(0, 999999, 0, 0.01);
+        priceField.setEditable(true);
+        priceField.setPrefWidth(200);
+
+        // 多图上传区域
+        List<File> imageFiles = new ArrayList<>();
+        List<String> uploadedImageIds = new ArrayList<>();
+        FlowPane imagePane = new FlowPane(10, 10);
+        imagePane.setPrefWrapLength(400);
+
+        Button addImageBtn = createAddImageButton();
+        imagePane.getChildren().add(addImageBtn);
+
+        addImageBtn.setOnAction(e -> showImagePickerPopup(dialog, imageFiles, uploadedImageIds, imagePane, addImageBtn));
+
+        // 截图快捷键
+        dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
+            if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
+                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
+                    if (file != null) {
+                        addImageToPane(file, imageFiles, uploadedImageIds, imagePane, addImageBtn, dialog);
+                    }
+                });
+                ke.consume();
+            }
+        });
+
+        ProgressIndicator loading = new ProgressIndicator();
+        loading.setPrefSize(24, 24);
+        loading.setVisible(false);
+        Label loadingLabel = new Label("提交中...");
+        loadingLabel.setVisible(false);
+        HBox loadingBox = new HBox(8, loading, loadingLabel);
+        loadingBox.setAlignment(Pos.CENTER);
+
+        VBox vb = new VBox(10,
+                new Label("客户称呼:"), customerField,
+                new Label("微信号:"), customerIdField,
+                new Label("存单数量:"), amountField,
+                new Label("存单总价:"), priceField,
+                new Label("备注:"), detailsField,
+                new Label("图片(可选):"), imagePane,
+                loadingBox);
+        vb.setPadding(new Insets(15));
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(460);
+
+        ButtonType submitType = new ButtonType("新增", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
+        dialog.setResultConverter(bt -> null);
+
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
+            String customer = customerField.getText().trim();
+            String customerId = customerIdField.getText().trim();
+            if (customer.isEmpty()) { showError("请填写客户称呼"); return; }
+            if (customerId.isEmpty()) { showError("请填写微信号"); return; }
+            double amount;
+            double price;
+            try {
+                amount = Double.parseDouble(amountField.getEditor().getText().trim());
+            } catch (NumberFormatException ex) {
+                showError("存单数量格式错误"); return;
+            }
+            try {
+                price = Double.parseDouble(priceField.getEditor().getText().trim());
+            } catch (NumberFormatException ex) {
+                showError("存单总价格式错误"); return;
+            }
+            if (amount <= 0) { showError("存单数量必须大于0"); return; }
+            if (price <= 0) { showError("存单总价必须大于0"); return; }
+            String details = detailsField.getText().trim();
+
+            submitBtn.setDisable(true);
+            loading.setVisible(true);
+            loadingLabel.setVisible(true);
+
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    // 上传尚未上传的图片
+                    for (int i = 0; i < imageFiles.size(); i++) {
+                        if (i >= uploadedImageIds.size() || uploadedImageIds.get(i) == null) {
+                            String id = ApiService.uploadImage(imageFiles.get(i));
+                            if (i < uploadedImageIds.size()) {
+                                uploadedImageIds.set(i, id);
+                            } else {
+                                uploadedImageIds.add(id);
+                            }
+                        }
+                    }
+                    String picProvence = uploadedImageIds.isEmpty() ? null : String.join(",", uploadedImageIds);
+                    ApiService.createBookOrder(customer, customerId, details, picProvence, amount, price);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.close();
+                showInfo("新增存单成功");
+                loadBookOrders();
+            });
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                loading.setVisible(false);
+                loadingLabel.setVisible(false);
+                showError("新增存单失败: " + task.getException().getMessage());
+            });
+            runAsync(task);
+        });
+
+        dialog.showAndWait();
+    }
+
+    // ====================== 图片预览弹窗（支持翻页） ======================
+
+    private void showImagePreviewDialog(String picProvence) {
+        if (picProvence == null || picProvence.isBlank()) return;
+        String[] ids = picProvence.split(",");
+        if (ids.length == 0) return;
+
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("图片预览");
+        dialog.setHeaderText(null);
+
+        ImageView imageView = new ImageView();
+        imageView.setFitWidth(500);
+        imageView.setFitHeight(400);
+        imageView.setPreserveRatio(true);
+
+        Label pageLabel = new Label("1 / " + ids.length);
+        pageLabel.setStyle("-fx-font-size: 14;");
+        final int[] currentIndex = {0};
+
+        // 直接通过公开 URL 加载图片
+        Runnable loadImage = () -> {
+            String url = ApiService.getImagePreviewUrl(ids[currentIndex[0]].trim());
+            imageView.setImage(new Image(url, true));
+            pageLabel.setText((currentIndex[0] + 1) + " / " + ids.length);
+        };
+        loadImage.run();
+
+        Button prevBtn = new Button("上一张");
+        prevBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 15;");
+        prevBtn.setDisable(true);
+        Button nextBtn = new Button("下一张");
+        nextBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 15;");
+        nextBtn.setDisable(ids.length <= 1);
+
+        prevBtn.setOnAction(e -> {
+            if (currentIndex[0] > 0) {
+                currentIndex[0]--;
+                loadImage.run();
+                nextBtn.setDisable(false);
+                prevBtn.setDisable(currentIndex[0] <= 0);
+            }
+        });
+        nextBtn.setOnAction(e -> {
+            if (currentIndex[0] < ids.length - 1) {
+                currentIndex[0]++;
+                loadImage.run();
+                prevBtn.setDisable(false);
+                nextBtn.setDisable(currentIndex[0] >= ids.length - 1);
+            }
+        });
+
+        HBox navBox = new HBox(15, prevBtn, pageLabel, nextBtn);
+        navBox.setAlignment(Pos.CENTER);
+
+        VBox vb = new VBox(10, imageView, navBox);
+        vb.setAlignment(Pos.CENTER);
+        vb.setPadding(new Insets(15));
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(560);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        dialog.showAndWait();
+    }
+
+    // ====================== 多图上传公共组件 ======================
+
+    /** 创建虚线框+号的添加图片按钮 */
+    private Button createAddImageButton() {
+        Button btn = new Button("+");
+        btn.setPrefSize(80, 80);
+        btn.setStyle("-fx-background-color: transparent; -fx-border-color: #aaa; -fx-border-style: dashed; "
+                + "-fx-border-width: 2; -fx-border-radius: 5; -fx-background-radius: 5; "
+                + "-fx-font-size: 24; -fx-text-fill: #aaa; -fx-cursor: hand;");
+        return btn;
+    }
+
+    /** 图片选择弹出面板: 从文件选择 或 截图 */
+    private void showImagePickerPopup(Dialog<?> dialog, List<File> imageFiles, List<String> uploadedIds,
+                                      FlowPane imagePane, Button addImageBtn) {
+        javafx.stage.Popup popup = new javafx.stage.Popup();
+        popup.setAutoHide(true);
+
+        Button fromFileBtn = new Button("从文件选择");
+        fromFileBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; "
+                + "-fx-padding: 8 16; -fx-background-radius: 5; -fx-font-size: 13;");
+        Button fromCaptureBtn = new Button("截图");
+        fromCaptureBtn.setStyle("-fx-background-color: #27ae60; -fx-text-fill: white; -fx-cursor: hand; "
+                + "-fx-padding: 8 16; -fx-background-radius: 5; -fx-font-size: 13;");
+
+        fromFileBtn.setOnAction(e -> {
+            popup.hide();
+            FileChooser fc = new FileChooser();
+            fc.setTitle("选择图片");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
+            File f = fc.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
+            if (f != null) {
+                addImageToPane(f, imageFiles, uploadedIds, imagePane, addImageBtn, dialog);
+            }
+        });
+        fromCaptureBtn.setOnAction(e -> {
+            popup.hide();
+            ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
+                if (file != null) {
+                    addImageToPane(file, imageFiles, uploadedIds, imagePane, addImageBtn, dialog);
+                }
+            });
+        });
+
+        HBox popupContent = new HBox(8, fromFileBtn, fromCaptureBtn);
+        popupContent.setPadding(new Insets(8));
+        popupContent.setStyle("-fx-background-color: white; -fx-background-radius: 8; "
+                + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 10, 0, 0, 2);");
+        popup.getContent().add(popupContent);
+
+        var bounds = addImageBtn.localToScreen(addImageBtn.getBoundsInLocal());
+        popup.show(addImageBtn, bounds.getMinX(), bounds.getMaxY() + 4);
+    }
+
+    /** 添加一张图片到 FlowPane（缩略图 + 删除按钮） */
+    private void addImageToPane(File file, List<File> imageFiles, List<String> uploadedIds,
+                                FlowPane imagePane, Button addImageBtn, Dialog<?> dialog) {
+        int index = imageFiles.size();
+        imageFiles.add(file);
+        uploadedIds.add(null); // 延迟上传
+
+        ImageView thumb = new ImageView(new Image(file.toURI().toString(), 70, 70, true, true));
+        thumb.setFitWidth(70);
+        thumb.setFitHeight(70);
+
+        Button removeBtn = new Button("×");
+        removeBtn.setStyle("-fx-background-color: rgba(0,0,0,0.5); -fx-text-fill: white; -fx-cursor: hand; "
+                + "-fx-padding: 0 4; -fx-font-size: 10; -fx-background-radius: 10;");
+
+        StackPane imgContainer = new StackPane(thumb, removeBtn);
+        imgContainer.setPrefSize(80, 80);
+        StackPane.setAlignment(removeBtn, Pos.TOP_RIGHT);
+
+        removeBtn.setOnAction(e -> {
+            int idx = imagePane.getChildren().indexOf(imgContainer);
+            if (idx >= 0) {
+                imagePane.getChildren().remove(imgContainer);
+                // 找到实际文件索引并移除
+                int fileIdx = idx; // addImageBtn 始终在最后
+                if (fileIdx < imageFiles.size()) {
+                    imageFiles.remove(fileIdx);
+                    uploadedIds.remove(fileIdx);
+                }
+            }
+        });
+
+        // 插入到"+"按钮之前
+        int insertIdx = imagePane.getChildren().indexOf(addImageBtn);
+        imagePane.getChildren().add(insertIdx, imgContainer);
+    }
+
+    // ====================== 请假记录 ======================
+
+    private void setupLeaveTableColumns() {
+        leaveTypeCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getType() != null ? cd.getValue().getType() : ""));
+        leaveApplyTimeCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getApplyTime() != null ? cd.getValue().getApplyTime() : ""));
+        leaveEndTimeCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getEndTime() != null ? cd.getValue().getEndTime() : ""));
+        leaveStatusCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getStatus() != null ? cd.getValue().getStatus() : ""));
+    }
+
+    private void loadLeaveRecords() {
+        Task<ApiService.PageResult> task = new Task<>() {
+            @Override
+            protected ApiService.PageResult call() throws Exception {
+                return ApiService.queryLeaveRecords(leaveCurrentPage, LEAVE_PAGE_SIZE);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            ApiService.PageResult pr = task.getValue();
+            List<LeaveRecord> records = pr.content.stream()
+                    .map(LeaveRecord::fromMap).collect(Collectors.toList());
+            leaveList.setAll(records);
+            leaveTotalPages = Math.max(pr.totalPages, 1);
+            leavePageLabel.setText("第 " + (leaveCurrentPage + 1) + " 页 / 共 " + leaveTotalPages + " 页");
+            leavePrevBtn.setDisable(leaveCurrentPage <= 0);
+            leaveNextBtn.setDisable(leaveCurrentPage >= leaveTotalPages - 1);
+        });
+        task.setOnFailed(e -> showError("加载请假记录失败: " + task.getException().getMessage()));
+        runAsync(task);
+    }
+
+    @FXML
+    private void handleRefreshLeave() { loadLeaveRecords(); }
+
+    @FXML
+    private void handleLeavePrev() {
+        if (leaveCurrentPage > 0) { leaveCurrentPage--; loadLeaveRecords(); }
+    }
+
+    @FXML
+    private void handleLeaveNext() {
+        if (leaveCurrentPage < leaveTotalPages - 1) { leaveCurrentPage++; loadLeaveRecords(); }
+    }
+
+    @FXML
+    private void handleAddLeave() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("新增请假");
+        dialog.setHeaderText(null);
+
+        ChoiceBox<String> typeBox = new ChoiceBox<>();
+        typeBox.getItems().addAll("事假", "休假", "病假");
+        typeBox.setValue("事假");
+        typeBox.setPrefWidth(200);
+
+        TextArea reasonField = new TextArea();
+        reasonField.setPromptText("请输入请假事由");
+        reasonField.setPrefRowCount(3);
+
+        VBox vb = new VBox(10,
+                new Label("假类型:"), typeBox,
+                new Label("事由:"), reasonField);
+        vb.setPadding(new Insets(15));
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(380);
+
+        ButtonType submitType = new ButtonType("提交", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
+        dialog.setResultConverter(bt -> null);
+
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
+            String type = typeBox.getValue();
+            String reason = reasonField.getText().trim();
+            if (reason.isEmpty()) { showError("请输入请假事由"); return; }
+
+            submitBtn.setDisable(true);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    ApiService.createLeaveRecord(type, reason);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.close();
+                showInfo("请假提交成功");
+                loadLeaveRecords();
+            });
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                showError("请假提交失败: " + task.getException().getMessage());
+            });
+            runAsync(task);
+        });
+
+        dialog.showAndWait();
+    }
+
+    // ====================== 工资预支 ======================
+
+    private void setupAdvanceTableColumns() {
+        advanceNameCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getName() != null ? cd.getValue().getName() : ""));
+        advanceAmountCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                String.valueOf(cd.getValue().getAmount())));
+        advanceStatusCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getStatus() != null ? cd.getValue().getStatus() : ""));
+    }
+
+    private void loadAdvanceRecords() {
+        Task<ApiService.PageResult> task = new Task<>() {
+            @Override
+            protected ApiService.PageResult call() throws Exception {
+                return ApiService.querySalaryAdvances(advanceCurrentPage, ADVANCE_PAGE_SIZE);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            ApiService.PageResult pr = task.getValue();
+            List<SalaryAdvance> records = pr.content.stream()
+                    .map(SalaryAdvance::fromMap).collect(Collectors.toList());
+            advanceList.setAll(records);
+            advanceTotalPages = Math.max(pr.totalPages, 1);
+            advancePageLabel.setText("第 " + (advanceCurrentPage + 1) + " 页 / 共 " + advanceTotalPages + " 页");
+            advancePrevBtn.setDisable(advanceCurrentPage <= 0);
+            advanceNextBtn.setDisable(advanceCurrentPage >= advanceTotalPages - 1);
+        });
+        task.setOnFailed(e -> showError("加载预支记录失败: " + task.getException().getMessage()));
+        runAsync(task);
+    }
+
+    @FXML
+    private void handleRefreshAdvance() { loadAdvanceRecords(); }
+
+    @FXML
+    private void handleAdvancePrev() {
+        if (advanceCurrentPage > 0) { advanceCurrentPage--; loadAdvanceRecords(); }
+    }
+
+    @FXML
+    private void handleAdvanceNext() {
+        if (advanceCurrentPage < advanceTotalPages - 1) { advanceCurrentPage++; loadAdvanceRecords(); }
+    }
+
+    @FXML
+    private void handleAddAdvance() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("新增工资预支");
+        dialog.setHeaderText(null);
+
+        Spinner<Double> amountField = new Spinner<>(0, 999999, 0, 0.01);
+        amountField.setEditable(true);
+        amountField.setPrefWidth(200);
+
+        TextArea reasonField = new TextArea();
+        reasonField.setPromptText("请输入预支事由");
+        reasonField.setPrefRowCount(3);
+
+        VBox vb = new VBox(10,
+                new Label("预支金额:"), amountField,
+                new Label("事由:"), reasonField);
+        vb.setPadding(new Insets(15));
+        dialog.getDialogPane().setContent(vb);
+        dialog.getDialogPane().setPrefWidth(380);
+
+        ButtonType submitType = new ButtonType("提交", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
+        dialog.setResultConverter(bt -> null);
+
+        Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
+        submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
+            evt.consume();
+            double amount;
+            try {
+                amount = Double.parseDouble(amountField.getEditor().getText().trim());
+            } catch (NumberFormatException ex) {
+                showError("金额格式错误"); return;
+            }
+            if (amount <= 0) { showError("金额必须大于0"); return; }
+            String reason = reasonField.getText().trim();
+            if (reason.isEmpty()) { showError("请输入预支事由"); return; }
+
+            submitBtn.setDisable(true);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    ApiService.createSalaryAdvance(reason, amount);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e -> {
+                dialog.close();
+                showInfo("预支申请提交成功");
+                loadAdvanceRecords();
+            });
+            task.setOnFailed(e -> {
+                submitBtn.setDisable(false);
+                showError("预支申请失败: " + task.getException().getMessage());
+            });
+            runAsync(task);
+        });
+
+        dialog.showAndWait();
+    }
+
+    // ====================== 维护记录 ======================
+
+    private void setupMaintTableColumns() {
+        maintBossCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getBossName() != null ? cd.getValue().getBossName() : ""));
+        maintWechatCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getWechatId() != null ? cd.getValue().getWechatId() : ""));
+        maintTimeCol.setCellValueFactory(cd -> new SimpleStringProperty(
+                cd.getValue().getAddTime() != null ? cd.getValue().getAddTime() : ""));
+
+        // 维护记录列: 显示"查看"链接
+        maintLogCol.setCellFactory(col -> new TableCell<>() {
+            private final Hyperlink viewLink = new Hyperlink("查看");
+            {
+                viewLink.setOnAction(e -> {
+                    MaintenanceRecord rec = getTableView().getItems().get(getIndex());
+                    showMaintDetail(rec);
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                setGraphic(viewLink);
+            }
+        });
+    }
+
+    private void showMaintDetail(MaintenanceRecord rec) {
+        selectedMaintRecord = rec;
+        String name = rec.getBossName() != null ? rec.getBossName() : "";
+        maintDetailTitle.setText("维护记录 — " + name);
+        String log = rec.getMaintainLog();
+        maintDetailContent.setText(log != null && !log.isBlank() ? log : "（暂无记录）");
+        // 显示"+"按钮
+        maintAddLogBtn.setVisible(true);
+        maintAddLogBtn.setManaged(true);
+        // 隐藏输入框
+        maintInputField.setVisible(false);
+        maintInputField.setManaged(false);
+        maintInputActions.setVisible(false);
+        maintInputActions.setManaged(false);
+    }
+
+    private void loadMaintRecords() {
+        Task<ApiService.PageResult> task = new Task<>() {
+            @Override
+            protected ApiService.PageResult call() throws Exception {
+                return ApiService.queryMaintenanceRecords(maintCurrentPage, MAINT_PAGE_SIZE);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            ApiService.PageResult pr = task.getValue();
+            List<MaintenanceRecord> records = pr.content.stream()
+                    .map(MaintenanceRecord::fromMap).collect(Collectors.toList());
+            maintList.setAll(records);
+            maintTotalPages = Math.max(pr.totalPages, 1);
+            maintPageLabel.setText("第 " + (maintCurrentPage + 1) + " 页 / 共 " + maintTotalPages + " 页");
+            maintPrevBtn.setDisable(maintCurrentPage <= 0);
+            maintNextBtn.setDisable(maintCurrentPage >= maintTotalPages - 1);
+        });
+        task.setOnFailed(e -> showError("加载维护记录失败: " + task.getException().getMessage()));
+        runAsync(task);
+    }
+
+    @FXML
+    private void handleRefreshMaint() { loadMaintRecords(); }
+
+    @FXML
+    private void handleMaintPrev() {
+        if (maintCurrentPage > 0) { maintCurrentPage--; loadMaintRecords(); }
+    }
+
+    @FXML
+    private void handleMaintNext() {
+        if (maintCurrentPage < maintTotalPages - 1) { maintCurrentPage++; loadMaintRecords(); }
+    }
+
+    @FXML
+    private void handleMaintAddLog() {
+        // 显示输入框和确认/取消按钮，隐藏"+"
+        maintInputField.setVisible(true);
+        maintInputField.setManaged(true);
+        maintInputField.setText("");
+        maintInputField.requestFocus();
+        maintInputActions.setVisible(true);
+        maintInputActions.setManaged(true);
+        maintAddLogBtn.setVisible(false);
+        maintAddLogBtn.setManaged(false);
+
+        // 限制50字
+        maintInputField.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null && newVal.length() > 50) {
+                maintInputField.setText(newVal.substring(0, 50));
+            }
+        });
+    }
+
+    @FXML
+    private void handleMaintConfirm() {
+        if (selectedMaintRecord == null) { showError("请先选择一条维护记录"); return; }
+        String content = maintInputField.getText().trim();
+        if (content.isEmpty()) { showError("请输入维护内容"); return; }
+
+        maintConfirmBtn.setDisable(true);
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                ApiService.appendMaintenanceLog(selectedMaintRecord.getId(), content);
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> {
+            maintConfirmBtn.setDisable(false);
+            // 隐藏输入区域，恢复"+"
+            maintInputField.setVisible(false);
+            maintInputField.setManaged(false);
+            maintInputActions.setVisible(false);
+            maintInputActions.setManaged(false);
+            maintAddLogBtn.setVisible(true);
+            maintAddLogBtn.setManaged(true);
+            // 刷新列表并更新详情
+            loadMaintRecords();
+            // 在详情内容后追加显示
+            String existing = maintDetailContent.getText();
+            String sep = (existing != null && !existing.isBlank() && !"（暂无记录）".equals(existing)) ? "\n" : "";
+            maintDetailContent.setText(("（暂无记录）".equals(existing) ? "" : existing) + sep + content);
+        });
+        task.setOnFailed(e -> {
+            maintConfirmBtn.setDisable(false);
+            showError("保存失败: " + task.getException().getMessage());
+        });
+        runAsync(task);
+    }
+
+    @FXML
+    private void handleMaintCancel() {
+        maintInputField.setText("");
+        maintInputField.setVisible(false);
+        maintInputField.setManaged(false);
+        maintInputActions.setVisible(false);
+        maintInputActions.setManaged(false);
+        maintAddLogBtn.setVisible(true);
+        maintAddLogBtn.setManaged(true);
     }
 }

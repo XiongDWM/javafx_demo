@@ -231,4 +231,39 @@ public class HttpService {
         if (lower.endsWith(".webp")) return "image/webp";
         return "application/octet-stream";
     }
+
+    /**
+     * 发送带签名的 GET 请求，返回原始字节（用于下载图片等二进制资源）
+     */
+    public static byte[] getBytes(String path) throws Exception {
+        ensureSession();
+        SessionContext ctx = SessionContext.getInstance();
+        SecretKey key = ctx.getSharedKey();
+
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String message = "GET\n" + path + "\n" + timestamp + "\n";
+        String signature = CryptoUtil.hmacSign(key, message);
+
+        HttpRequest.Builder rb = HttpRequest.newBuilder()
+                .uri(URI.create(BASE_URL + path))
+                .header("X-Session-Id", ctx.getSessionId())
+                .header("X-Timestamp", timestamp)
+                .header("X-Signature", signature)
+                .GET();
+
+        if (ctx.getJwtToken() != null) {
+            rb.header("Authorization", "Bearer " + ctx.getJwtToken());
+        }
+
+        HttpResponse<byte[]> resp = CLIENT.send(rb.build(), HttpResponse.BodyHandlers.ofByteArray());
+
+        resp.headers().firstValue("X-New-Token").ifPresent(newToken -> {
+            SessionContext.getInstance().setJwtToken(newToken);
+        });
+
+        if (resp.statusCode() != 200) {
+            throw new RuntimeException("请求失败: HTTP " + resp.statusCode());
+        }
+        return resp.body();
+    }
 }

@@ -29,12 +29,11 @@ import java.awt.Rectangle;
 import java.awt.Robot;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 屏幕截图工具 — 类似微信截图，支持区域选择、预览确认
+ * 屏幕截图工具 — 支持区域选择、预览确认
  * <p>
  * 用法: ScreenCaptureTool.capture(window, file -> { ... });
  */

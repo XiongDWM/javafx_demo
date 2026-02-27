@@ -129,7 +129,8 @@ public class Order {
             case "SELF_G" -> "自接女单/Ai";
             case "BOOKED" -> "预约单";
             case "COMPELETING" -> "预约单补单";
-            case "SECOND_HAND" -> "二手单";
+            case "SECOND_HAND" -> "二手男单";
+            case "SECOND_HAND_G" -> "二手女单/Ai";
             case "THIRD_PARTY" -> "甩单";
             case "LONG_TERM" -> "长时间订单";
             default -> type;
@@ -163,6 +164,6 @@ public class Order {
     }
 
     public boolean isSecondHand() {
-        return "SECOND_HAND".equals(type) || "THIRD_PARTY".equals(type);
+        return null==secondHandStatus&&("SECOND_HAND".equals(type) || "THIRD_PARTY".equals(type)|| "SECOND_HAND_G".equals(type));
     }
 }

@@ -127,11 +127,11 @@ public class ApiService {
     /**
      * 提交找单请求
      */
-    public static void submitFindingRequest(long palId, Boolean man, String description,
+    public static void submitFindingRequest(long palId, Boolean man,
                                               String gameType, String rank) throws Exception {
         ObjectNode body = JsonNodeFactory.instance.objectNode();
         if (man != null) body.put("man", man);
-        body.put("description", description);
+        // body.put("description", description); --- IGNORE ---
         if (gameType != null && !gameType.isEmpty()) body.put("gameType", gameType);
         if (rank != null && !rank.isEmpty()) body.put("rank", rank);
         ObjectNode palObj = JsonNodeFactory.instance.objectNode();
@@ -140,6 +140,34 @@ public class ApiService {
 
         String resp = retryOnKeyExpired(() -> HttpService.post("/finding/submit", MAPPER.writeValueAsString(body)));
         checkSuccess(resp);
+    }
+
+    /**
+     * 撤销找单请求
+     */
+    public static void cancelFindingRequest(long requestId) throws Exception {
+        String resp = retryOnKeyExpired(
+                () -> HttpService.post("/finding/cancel", String.valueOf(requestId)));
+        checkSuccess(resp);
+    }
+
+    /**
+     * 查询找单请求列表（不分页，全量返回）
+     */
+    public static List<Map<String, Object>> queryFindingList() throws Exception {
+        String resp = retryOnKeyExpired(() -> HttpService.get("/finding/list"));
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) {
+            throw new RuntimeException("查询找单列表失败");
+        }
+        JsonNode data = json.path("data");
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (data.isArray()) {
+            for (JsonNode el : data) {
+                result.add(jsonNodeToMap(el));
+            }
+        }
+        return result;
     }
 
     // ==================== 文件上传 ====================
@@ -175,13 +203,138 @@ public class ApiService {
         checkSuccess(resp);
     }
 
+    // ==================== 存单 ====================
+
+    /**
+     * 分页查询存单列表
+     */
+    public static PageResult queryBookOrders(int page, int size, Map<String, String> filters) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("pageNumber", page);
+        body.put("pageSize", size);
+        if (filters != null && !filters.isEmpty()) {
+            body.put("filters", filters);
+        }
+        String resp = retryOnKeyExpired(() -> HttpService.post("/bookOrder/list", toJson(body)));
+        return parsePageResult(resp);
+    }
+
+    /**
+     * 从存单创建 order（开始）
+     */
+    public static void startBookOrder(long orderId) throws Exception {
+        String resp = retryOnKeyExpired(
+                () -> HttpService.post("/bookOrder/starting?orderId=" + orderId, "{}"));
+        checkSuccess(resp);
+    }
+
+    /**
+     * 新增存单
+     */
+    public static void createBookOrder(String customer, String customerId, String details,
+                                       String picProvence, double amount, double price) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("customer", customer);
+        body.put("customerId", customerId);
+        if (details != null && !details.isEmpty()) body.put("details", details);
+        if (picProvence != null && !picProvence.isEmpty()) body.put("picProvence", picProvence);
+        body.put("amount", amount);
+        body.put("price", price);
+        String resp = retryOnKeyExpired(
+                () -> HttpService.post("/bookOrder/create", toJson(body)));
+        checkSuccess(resp);
+    }
+
+    // TODO: 关闭存单接口 — /bookOrder/close
+    // TODO: 上传图片到存单接口 — /bookOrder/uploadPic
+    // TODO: 续存接口 — /bookOrder/renew
+
+    // ==================== 请假记录 ====================
+
+    /**
+     * 分页查询请假记录
+     */
+    public static PageResult queryLeaveRecords(int page, int size) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("pageNumber", page);
+        body.put("pageSize", size);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/leave/list", toJson(body)));
+        return parsePageResult(resp);
+    }
+
+    /**
+     * 新增请假
+     */
+    public static void createLeaveRecord(String type, String reason) throws Exception {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("type", type);
+        body.put("reason", reason);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/leave/create", toJson(body)));
+        checkSuccess(resp);
+    }
+
+    // ==================== 工资预支 ====================
+
+    /**
+     * 分页查询工资预支记录
+     */
+    public static PageResult querySalaryAdvances(int page, int size) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("pageNumber", page);
+        body.put("pageSize", size);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/salaryAdvance/list", toJson(body)));
+        return parsePageResult(resp);
+    }
+
+    /**
+     * 新增工资预支
+     */
+    public static void createSalaryAdvance(String reason, double amount) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("reason", reason);
+        body.put("amount", amount);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/salaryAdvance/create", toJson(body)));
+        checkSuccess(resp);
+    }
+
+    // ==================== 维护记录 ====================
+
+    /**
+     * 分页查询维护记录
+     */
+    public static PageResult queryMaintenanceRecords(int page, int size) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("pageNumber", page);
+        body.put("pageSize", size);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/maintenance/list", toJson(body)));
+        return parsePageResult(resp);
+    }
+
+    /**
+     * 追加维护记录内容
+     */
+    public static void appendMaintenanceLog(long recordId, String content) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", recordId);
+        body.put("content", content);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/maintenance/appendLog", toJson(body)));
+        checkSuccess(resp);
+    }
+
     // ==================== 图片预览 ====================
 
     /**
-     * 获取图片预览 URL
+     * 获取图片预览 URL（不带认证，仅备用）
      */
     public static String getImagePreviewUrl(String fileId) {
-        return ConfigManager.getInstance().getServerBaseUrl() + "/preview/" + fileId;
+        return ConfigManager.getInstance().getServerBaseUrl() + "/oss/preview/" + fileId;
+    }
+
+    /**
+     * 通过认证通道下载图片字节
+     */
+    public static byte[] downloadImage(String fileId) throws Exception {
+        return HttpService.getBytes("/oss/preview/" + fileId);
     }
 
     // ==================== 统计 ====================
