@@ -51,9 +51,12 @@ public class MainController {
     private static final long IDLE_TIMEOUT_MS = (long) (1.5 * 60 * 60 * 1000L);
     /** 空闲检查间隔（毫秒）— 1 分钟 */
     private static final long IDLE_CHECK_INTERVAL_MS = 60_000L;
+    /** 心跳间隔（毫秒）— 10 分钟，保持 JWT token 不过期 */
+    private static final long HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000L;
 
     private volatile long lastActivityTime = System.currentTimeMillis();
     private java.util.Timer idleTimer;
+    private java.util.Timer heartbeatTimer;
 
     // ---- Header ----
     @FXML private Label usernameLabel;
@@ -253,6 +256,22 @@ public class MainController {
         }, IDLE_CHECK_INTERVAL_MS, IDLE_CHECK_INTERVAL_MS);
     }
 
+    /** 启动心跳定时器：每 10 分钟发一次轻量请求，触发后端 JWT 滑动续期 + ActivityTracker.touch() */
+    private void startHeartbeat() {
+        heartbeatTimer = new java.util.Timer("Heartbeat", true);
+        heartbeatTimer.scheduleAtFixedRate(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    ApiService.heartbeat();
+                    System.out.println("[Heartbeat] token 保活成功");
+                } catch (Exception e) {
+                    System.err.println("[Heartbeat] 失败: " + e.getMessage());
+                }
+            }
+        }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS);
+    }
+
     /** 超时强制登出 */
     private void forceLogout() {
         forceLogout(null);
@@ -260,6 +279,7 @@ public class MainController {
 
     /** 强制登出，可附带提示信息 */
     private void forceLogout(String message) {
+        if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
         if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
         // 先通知后端
         try { ApiService.logout(); } catch (Exception ignored) {}
@@ -323,6 +343,8 @@ public class MainController {
                     return;
                 }
             }
+            // 列表中不存在该订单（CREATE 被合并为 UPDATE），全量刷新
+            loadOrders();
         });
         task.setOnFailed(e -> System.err.println("增量更新失败: " + task.getException().getMessage()));
         runAsync(task);
@@ -1222,7 +1244,16 @@ public class MainController {
 
     public void setUserInfo(String username) {
         usernameLabel.setText(username);
-        updateUserStatus("ONLINE");
+        // 异步获取后端真实用户状态
+        Task<String> statusTask = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return ApiService.getUserStatus();
+            }
+        };
+        statusTask.setOnSucceeded(e -> updateUserStatus(statusTask.getValue()));
+        statusTask.setOnFailed(e -> updateUserStatus("ONLINE")); // 获取失败则默认显示在线
+        runAsync(statusTask);
     }
 
     private void updateUserStatus(String status) {
@@ -1240,6 +1271,13 @@ public class MainController {
         }
         userStatusLabel.setText(dot + " " + text);
         userStatusLabel.setStyle("-fx-text-fill: " + color + ";");
+
+        // 忙碌状态才启动心跳保活，其他状态停止心跳
+        if ("BUSY".equals(status)) {
+            if (heartbeatTimer == null) startHeartbeat();
+        } else {
+            if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
+        }
     }
 
     private void setActiveButton(Button active) {
