@@ -390,6 +390,7 @@ public class ScreenCaptureTool {
     private static void restore(List<Stage> stages) {
         Platform.runLater(() -> {
             for (Stage s : stages) s.setIconified(false);
+            for (Stage s : stages) s.toFront();
         });
     }
 
