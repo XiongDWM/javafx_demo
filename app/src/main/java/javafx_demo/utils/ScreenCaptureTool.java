@@ -16,6 +16,7 @@ import javafx.scene.image.WritableImage;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Screen;
@@ -29,6 +30,7 @@ import java.awt.Rectangle;
 import java.awt.Robot;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -39,27 +41,91 @@ import java.util.function.Consumer;
  */
 public class ScreenCaptureTool {
 
+    /** 当前的浮窗 Stage（全局唯一） */
+    private static Stage floatingStage;
+
     /**
-     * 启动屏幕截图。会将所有应用窗口最小化，截取屏幕后弹出选区遮罩。
+     * 启动屏幕截图。先隐藏所有应用窗口，延时后截取屏幕（可截到游戏画面），
+     * 完成/取消后恢复窗口。
      *
-     * @param ownerWindow 触发截图的窗口
+     * @param ownerWindow 触发截图的窗口（可为 null）
      * @param onDone      截图完成回调，参数为截图 PNG 文件（取消时为 null）
      */
     public static void capture(Window ownerWindow, Consumer<File> onDone) {
-        // // 收集所有可见 Stage 并最小化，避免它们出现在截图中
-        // List<Stage> toRestore = new ArrayList<>();
-        // for (Window w : new ArrayList<>(Window.getWindows())) {
-        //     if (w instanceof Stage s && s.isShowing() && !s.isIconified()) {
-        //         s.setIconified(true);
-        //         toRestore.add(s);
-        //     }
-        // }
+        // 收集所有可见 Stage 并隐藏，避免出现在截图中
+        List<Stage> toRestore = new ArrayList<>();
+        for (Window w : new ArrayList<>(Window.getWindows())) {
+            if (w instanceof Stage s && s.isShowing() && !s.isIconified()) {
+                s.setIconified(true);
+                toRestore.add(s);
+            }
+        }
 
-        // // 等待窗口完全隐藏后再截图
-        // PauseTransition wait = new PauseTransition(Duration.millis(500));
-        // wait.setOnFinished(evt -> doCapture(toRestore, onDone));
-        // wait.play();
-        doCapture(List.of(), onDone);
+        // 等待窗口完全隐藏后再截图
+        PauseTransition wait = new PauseTransition(Duration.millis(500));
+        wait.setOnFinished(evt -> doCapture(toRestore, onDone));
+        wait.play();
+    }
+
+    /**
+     * 在屏幕右侧中间显示一个置顶小浮窗按钮（📷），用户在游戏中点击即可触发截图。
+     * 截图完成后浮窗保留，直到调用 {@link #hideFloatingTrigger()} 关闭。
+     *
+     * @param onDone 截图完成回调
+     */
+    public static void showFloatingTrigger(Consumer<File> onDone) {
+        if (floatingStage != null && floatingStage.isShowing()) return;
+
+        floatingStage = new Stage(StageStyle.TRANSPARENT);
+        floatingStage.setAlwaysOnTop(true);
+
+        Button btn = new Button("📷");
+        btn.setStyle("-fx-background-color: rgba(25,179,61,0.85); -fx-text-fill: white; "
+                + "-fx-font-size: 20; -fx-cursor: hand; -fx-padding: 8 12; "
+                + "-fx-background-radius: 8; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 6, 0, 0, 2);");
+        btn.setOnAction(e -> {
+            // 隐藏浮窗自身再截图
+            floatingStage.hide();
+            capture(null, file -> {
+                Platform.runLater(() -> {
+                    floatingStage.show();
+                    onDone.accept(file);
+                });
+            });
+        });
+
+        StackPane root = new StackPane(btn);
+        root.setStyle("-fx-background-color: transparent;");
+        root.setPadding(new Insets(4));
+
+        Scene scene = new Scene(root, -1, -1, Color.TRANSPARENT);
+        floatingStage.setScene(scene);
+
+        // 放在屏幕右侧中间
+        Rectangle2D sb = Screen.getPrimary().getVisualBounds();
+        floatingStage.setX(sb.getMaxX() - 70);
+        floatingStage.setY(sb.getMinY() + sb.getHeight() / 2 - 25);
+
+        // 允许拖动浮窗
+        final double[] dragDelta = new double[2];
+        root.setOnMousePressed(me -> {
+            dragDelta[0] = floatingStage.getX() - me.getScreenX();
+            dragDelta[1] = floatingStage.getY() - me.getScreenY();
+        });
+        root.setOnMouseDragged(me -> {
+            floatingStage.setX(me.getScreenX() + dragDelta[0]);
+            floatingStage.setY(me.getScreenY() + dragDelta[1]);
+        });
+
+        floatingStage.show();
+    }
+
+    /** 关闭浮窗截图按钮 */
+    public static void hideFloatingTrigger() {
+        if (floatingStage != null) {
+            floatingStage.close();
+            floatingStage = null;
+        }
     }
 
     // ==================== 截图核心 ====================

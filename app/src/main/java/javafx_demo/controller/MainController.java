@@ -33,6 +33,7 @@ import javafx_demo.utils.SessionContext;
 
 import java.io.File;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -641,17 +642,16 @@ public class MainController {
             }
         });
 
+        Consumer<File> captureCallback = file -> {
+            if (file != null) {
+                selectedFile[0] = file;
+                fileLabel.setText("截图");
+                preview.setImage(new Image(file.toURI().toString(), 300, 200, true, true));
+            }
+        };
         Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
         captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
-        captureBtn.setOnAction(e -> {
-            ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
-                if (file != null) {
-                    selectedFile[0] = file;
-                    fileLabel.setText("截图");
-                    preview.setImage(new Image(file.toURI().toString(), 300, 200, true, true));
-                }
-            });
-        });
+        captureBtn.setOnAction(e -> ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), captureCallback));
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
             if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
                 captureBtn.fire();
@@ -716,6 +716,8 @@ public class MainController {
             runAsync(task);
         });
 
+        ScreenCaptureTool.showFloatingTrigger(captureCallback);
+        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -894,6 +896,7 @@ public class MainController {
         // 二手单需要上传附加截图
         final File[] attachedFile = {null};
         final Button[] pickBtnRef = {null};
+        Consumer<File> floatingCb = null;
         if (order.isSecondHand()) {
             ImageView preview = new ImageView();
             preview.setFitWidth(250);
@@ -917,17 +920,16 @@ public class MainController {
                     preview.setImage(new Image(f.toURI().toString(), 250, 160, true, true));
                 }
             });
+            Consumer<File> attachCaptureCb = file -> {
+                if (file != null) {
+                    attachedFile[0] = file;
+                    fileLabel.setText("截图");
+                    preview.setImage(new Image(file.toURI().toString(), 250, 160, true, true));
+                }
+            };
             Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
             captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
-            captureBtn.setOnAction(e -> {
-                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
-                    if (file != null) {
-                        attachedFile[0] = file;
-                        fileLabel.setText("截图");
-                        preview.setImage(new Image(file.toURI().toString(), 250, 160, true, true));
-                    }
-                });
-            });
+            captureBtn.setOnAction(e -> ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), attachCaptureCb));
             dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
                 if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
                     captureBtn.fire();
@@ -939,6 +941,7 @@ public class MainController {
                     new Label("附加结束截图(二手单必填):"),
                     new HBox(10, pickBtn, captureBtn, fileLabel),
                     preview);
+            floatingCb = attachCaptureCb;
         }
         ProgressIndicator loading = new ProgressIndicator();
         loading.setPrefSize(24, 24);
@@ -1013,6 +1016,10 @@ public class MainController {
             runAsync(task);
         });
 
+        if (floatingCb != null) {
+            ScreenCaptureTool.showFloatingTrigger(floatingCb);
+        }
+        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1045,17 +1052,16 @@ public class MainController {
             }
         });
 
+        Consumer<File> closeCaptureCallback = file -> {
+            if (file != null) {
+                selected[0] = file;
+                fileLabel.setText("截图");
+                preview.setImage(new Image(file.toURI().toString(), 300, 200, true, true));
+            }
+        };
         Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
         captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
-        captureBtn.setOnAction(e -> {
-            ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
-                if (file != null) {
-                    selected[0] = file;
-                    fileLabel.setText("截图");
-                    preview.setImage(new Image(file.toURI().toString(), 300, 200, true, true));
-                }
-            });
-        });
+        captureBtn.setOnAction(e -> ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), closeCaptureCallback));
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
             if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
                 captureBtn.fire();
@@ -1120,6 +1126,8 @@ public class MainController {
             runAsync(task);
         });
 
+        ScreenCaptureTool.showFloatingTrigger(closeCaptureCallback);
+        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1430,14 +1438,16 @@ public class MainController {
 
         addImageBtn.setOnAction(e -> showImagePickerPopup(dialog, imageFiles, uploadedImageIds, imagePane, addImageBtn));
 
+        // 截图回调
+        Consumer<File> renewCaptureCb = file -> {
+            if (file != null) {
+                addImageToPane(file, imageFiles, uploadedImageIds, imagePane, addImageBtn, dialog);
+            }
+        };
         // 截图快捷键
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
             if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
-                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
-                    if (file != null) {
-                        addImageToPane(file, imageFiles, uploadedImageIds, imagePane, addImageBtn, dialog);
-                    }
-                });
+                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), renewCaptureCb);
                 ke.consume();
             }
         });
@@ -1520,6 +1530,8 @@ public class MainController {
             runAsync(task);
         });
 
+        ScreenCaptureTool.showFloatingTrigger(renewCaptureCb);
+        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1556,14 +1568,16 @@ public class MainController {
 
         addImageBtn.setOnAction(e -> showImagePickerPopup(dialog, imageFiles, uploadedImageIds, imagePane, addImageBtn));
 
+        // 截图回调
+        Consumer<File> addBookCaptureCb = file -> {
+            if (file != null) {
+                addImageToPane(file, imageFiles, uploadedImageIds, imagePane, addImageBtn, dialog);
+            }
+        };
         // 截图快捷键
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
             if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
-                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), file -> {
-                    if (file != null) {
-                        addImageToPane(file, imageFiles, uploadedImageIds, imagePane, addImageBtn, dialog);
-                    }
-                });
+                ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), addBookCaptureCb);
                 ke.consume();
             }
         });
@@ -1652,6 +1666,8 @@ public class MainController {
             runAsync(task);
         });
 
+        ScreenCaptureTool.showFloatingTrigger(addBookCaptureCb);
+        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
