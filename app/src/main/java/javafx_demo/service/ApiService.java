@@ -364,6 +364,31 @@ public class ApiService {
         return result;
     }
 
+    // ==================== 心跳 ====================
+
+    /**
+     * 心跳保活 — 触发后端 JWT 滑动续期 + UserActivityTracker.touch()
+     * 即使后端没有 /user/heartbeat 端点（返回 404），JWT filter 仍会处理 token 续期
+     */
+    public static void heartbeat() throws Exception {
+        retryOnKeyExpired(() -> HttpService.get("/user/heartbeat"));
+    }
+
+    // ==================== 用户状态 ====================
+
+    /**
+     * 获取当前用户在后端的真实状态
+     * @return 状态枚举名称，如 "ONLINE", "BUSY", "ACTIVE" 等
+     */
+    public static String getUserStatus() throws Exception {
+        String resp = retryOnKeyExpired(() -> HttpService.get("/user/me"));
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) {
+            throw new RuntimeException("获取用户状态失败");
+        }
+        return json.path("data").asText("ONLINE");
+    }
+
     // ==================== 登出 ====================
 
     /**
