@@ -13,7 +13,10 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
@@ -24,6 +27,7 @@ import javafx_demo.entity.LeaveRecord;
 import javafx_demo.entity.SalaryAdvance;
 import javafx_demo.entity.MaintenanceRecord;
 import javafx_demo.service.ApiService;
+import javafx_demo.service.HttpService;
 import javafx_demo.service.SseClient;
 import javafx_demo.utils.ConfigManager;
 import javafx_demo.utils.GameTypeStore;
@@ -32,6 +36,8 @@ import javafx_demo.utils.ScreenCaptureTool;
 import javafx_demo.utils.SessionContext;
 
 import java.io.File;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -208,6 +214,14 @@ public class MainController {
         advanceTable.setItems(advanceList);
         maintTable.setItems(maintList);
 
+        // 启用所有表格单元格级别选中与复制
+        enableCellCopy(ordersTable);
+        enableCellCopy(findingTable);
+        enableCellCopy(bookOrdersTable);
+        enableCellCopy(leaveTable);
+        enableCellCopy(advanceTable);
+        enableCellCopy(maintTable);
+
         // 默认显示工单列表
         showDashboard();
         // 异步加载今日工单
@@ -241,12 +255,24 @@ public class MainController {
 
     /** 超时强制登出 */
     private void forceLogout() {
+        forceLogout(null);
+    }
+
+    /** 强制登出，可附带提示信息 */
+    private void forceLogout(String message) {
         if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
         // 先通知后端
         try { ApiService.logout(); } catch (Exception ignored) {}
         SseClient.getInstance().disconnect();
         SessionContext.getInstance().clear();
         SceneManager.getInstance().switchToLogin();
+        if (message != null) {
+            Alert a = new Alert(Alert.AlertType.WARNING);
+            a.setTitle("提示");
+            a.setHeaderText(null);
+            a.setContentText(message);
+            a.showAndWait();
+        }
     }
 
     /** 启动 SSE 并注册事件回调 */
@@ -342,6 +368,49 @@ public class MainController {
         showOnly(bookOrderPane);
         statusLabel.setText("存单列表");
         loadBookOrders();
+    }
+
+    // ====================== 单元格复制支持 ======================
+
+    @SuppressWarnings("unchecked")
+    private <S> void enableCellCopy(TableView<S> table) {
+        // 开启单元格选择模式
+        table.getSelectionModel().setCellSelectionEnabled(true);
+
+        // 右键菜单
+        MenuItem copyItem = new MenuItem("复制");
+        copyItem.setAccelerator(KeyCombination.keyCombination("Shortcut+C"));
+        copyItem.setOnAction(e -> copySelectedCell(table));
+        ContextMenu menu = new ContextMenu(copyItem);
+        table.setContextMenu(menu);
+
+        // Ctrl+C / Cmd+C 快捷键
+        table.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
+            if (e.isShortcutDown() && e.getCode() == KeyCode.C) {
+                copySelectedCell(table);
+                e.consume();
+            }
+        });
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private <S> void copySelectedCell(TableView<S> table) {
+        var pos = table.getSelectionModel().getSelectedCells().stream().findFirst().orElse(null);
+        if (pos == null) return;
+        int row = pos.getRow();
+        TableColumn col = pos.getTableColumn();
+        if (col == null || row < 0 || row >= table.getItems().size()) return;
+        Object cellValue = col.getCellObservableValue(table.getItems().get(row));
+        String text = "";
+        if (cellValue instanceof javafx.beans.value.ObservableValue<?> obs) {
+            Object val = obs.getValue();
+            text = val == null ? "" : val.toString();
+        }
+        if (!text.isEmpty()) {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(text);
+            Clipboard.getSystemClipboard().setContent(content);
+        }
     }
 
     // ====================== 表格列绑定 ======================
@@ -1184,9 +1253,44 @@ public class MainController {
     }
 
     private void runAsync(Task<?> task) {
+        // 包装 onFailed，优先拦截 401 UnauthorizedException
+        var originalOnFailed = task.getOnFailed();
+        task.setOnFailed(e -> {
+            Throwable ex = task.getException();
+            if (isUnauthorized(ex)) {
+                Platform.runLater(() -> forceLogout("自动登出，请重新登录"));
+                return;
+            }
+            // 404 静默忽略，不弹窗
+            if (isNotFound(ex)) {
+                System.err.println("[404] 接口不存在，已静默忽略");
+                return;
+            }
+            if (originalOnFailed != null) {
+                originalOnFailed.handle(e);
+            }
+        });
         Thread t = new Thread(task);
         t.setDaemon(true);
         t.start();
+    }
+
+    /** 检查异常链中是否包含 UnauthorizedException */
+    private static boolean isUnauthorized(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof HttpService.UnauthorizedException) return true;
+            ex = ex.getCause();
+        }
+        return false;
+    }
+
+    /** 检查异常链中是否包含 NotFoundException (404) */
+    private static boolean isNotFound(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof HttpService.NotFoundException) return true;
+            ex = ex.getCause();
+        }
+        return false;
     }
 
     private void showInfo(String msg) {
@@ -1833,9 +1937,9 @@ public class MainController {
         leaveTypeCol.setCellValueFactory(cd -> new SimpleStringProperty(
                 cd.getValue().getType() != null ? cd.getValue().getType() : ""));
         leaveApplyTimeCol.setCellValueFactory(cd -> new SimpleStringProperty(
-                cd.getValue().getApplyTime() != null ? cd.getValue().getApplyTime() : ""));
+                cd.getValue().getStartDate() != null ? cd.getValue().getStartDate() : ""));
         leaveEndTimeCol.setCellValueFactory(cd -> new SimpleStringProperty(
-                cd.getValue().getEndTime() != null ? cd.getValue().getEndTime() : ""));
+                cd.getValue().getEndDate() != null ? cd.getValue().getEndDate() : ""));
         leaveStatusCol.setCellValueFactory(cd -> new SimpleStringProperty(
                 cd.getValue().getStatus() != null ? cd.getValue().getStatus() : ""));
     }
@@ -1885,12 +1989,22 @@ public class MainController {
         typeBox.setValue("事假");
         typeBox.setPrefWidth(200);
 
+        DatePicker startDatePicker = new DatePicker(LocalDate.now());
+        startDatePicker.setPrefWidth(200);
+        startDatePicker.setPromptText("选择开始日期");
+
+        DatePicker endDatePicker = new DatePicker(LocalDate.now());
+        endDatePicker.setPrefWidth(200);
+        endDatePicker.setPromptText("选择结束日期");
+
         TextArea reasonField = new TextArea();
         reasonField.setPromptText("请输入请假事由");
         reasonField.setPrefRowCount(3);
 
         VBox vb = new VBox(10,
                 new Label("假类型:"), typeBox,
+                new Label("开始日期:"), startDatePicker,
+                new Label("结束日期:"), endDatePicker,
                 new Label("事由:"), reasonField);
         vb.setPadding(new Insets(15));
         dialog.getDialogPane().setContent(vb);
@@ -1904,13 +2018,22 @@ public class MainController {
         submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
             evt.consume();
             String type = typeBox.getValue();
+            LocalDate startDate = startDatePicker.getValue();
+            LocalDate endDate = endDatePicker.getValue();
             String reason = reasonField.getText().trim();
+            if (startDate == null) { showError("请选择开始日期"); return; }
+            if (endDate == null) { showError("请选择结束日期"); return; }
+            if (endDate.isBefore(startDate)) { showError("结束日期不能早于开始日期"); return; }
             if (reason.isEmpty()) { showError("请输入请假事由"); return; }
+
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+            String startStr = startDate.format(fmt);
+            String endStr = endDate.format(fmt);
 
             submitBtn.setDisable(true);
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    ApiService.createLeaveRecord(type, reason);
+                    ApiService.createLeaveRecord(type, reason, startStr, endStr);
                     return null;
                 }
             };

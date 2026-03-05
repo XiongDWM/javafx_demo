@@ -223,8 +223,10 @@ public class ApiService {
      * 从存单创建 order（开始）
      */
     public static void startBookOrder(long orderId) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("orderId", orderId);
         String resp = retryOnKeyExpired(
-                () -> HttpService.post("/bookOrder/starting?orderId=" + orderId, "{}"));
+                () -> HttpService.post("/bookOrder/starting", toJson(body)));
         checkSuccess(resp);
     }
 
@@ -265,10 +267,12 @@ public class ApiService {
     /**
      * 新增请假
      */
-    public static void createLeaveRecord(String type, String reason) throws Exception {
+    public static void createLeaveRecord(String type, String reason, String startDate, String endDate) throws Exception {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("type", type);
         body.put("reason", reason);
+        body.put("startDate", startDate);
+        body.put("endDate", endDate);
         String resp = retryOnKeyExpired(() -> HttpService.post("/leave/create", toJson(body)));
         checkSuccess(resp);
     }

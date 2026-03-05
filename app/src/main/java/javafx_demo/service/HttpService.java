@@ -22,6 +22,16 @@ import java.util.UUID;
  */
 public class HttpService {
 
+    /** Token 过期或无效时抛出的异常 */
+    public static class UnauthorizedException extends RuntimeException {
+        public UnauthorizedException() { super("自动登出，请重新登录"); }
+    }
+
+    /** 接口不存在 (404) */
+    public static class NotFoundException extends RuntimeException {
+        public NotFoundException() { super("接口不存在 (404)"); }
+    }
+
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -182,6 +192,12 @@ public class HttpService {
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body));
 
         HttpResponse<String> resp = CLIENT.send(rb.build(), HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 401||resp.statusCode() == 403) {
+            throw new UnauthorizedException();
+        }
+        if (resp.statusCode() == 404) {
+            throw new NotFoundException();
+        }
         if (resp.statusCode() != 200) {
             throw new RuntimeException("上传失败: HTTP " + resp.statusCode());
         }
@@ -199,6 +215,12 @@ public class HttpService {
         });
 
         String body = resp.body();
+        if (resp.statusCode() == 401 || resp.statusCode() == 403) {
+            throw new UnauthorizedException();
+        }
+        if (resp.statusCode() == 404) {
+            throw new NotFoundException();
+        }
         if (resp.statusCode() != 200) {
             throw new RuntimeException("请求失败: HTTP " + resp.statusCode() + " " + body);
         }
@@ -261,6 +283,12 @@ public class HttpService {
             SessionContext.getInstance().setJwtToken(newToken);
         });
 
+        if (resp.statusCode() == 401 || resp.statusCode() == 403) {
+            throw new UnauthorizedException();
+        }
+        if (resp.statusCode() == 404) {
+            throw new NotFoundException();
+        }
         if (resp.statusCode() != 200) {
             throw new RuntimeException("请求失败: HTTP " + resp.statusCode());
         }
