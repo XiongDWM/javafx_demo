@@ -393,15 +393,15 @@ public class ScreenCaptureTool {
     private static void restore(List<Stage> stages, Stage ownerStage) {
         Platform.runLater(() -> {
             for (Stage s : stages) s.setIconified(false);
-            // 先恢复所有窗口，然后将触发截图的窗口置顶
-            for (Stage s : stages) {
-                if (s != ownerStage) s.toFront();
-            }
-            // ownerStage 最后 toFront，确保对话框在主窗口前面
-            if (ownerStage != null) {
-                ownerStage.toFront();
-                ownerStage.requestFocus();
-            }
+            // setIconified(false) 是异步的，需要延时等窗口完全恢复后再置顶 owner
+            PauseTransition delay = new PauseTransition(Duration.millis(300));
+            delay.setOnFinished(e -> {
+                if (ownerStage != null) {
+                    ownerStage.toFront();
+                    ownerStage.requestFocus();
+                }
+            });
+            delay.play();
         });
     }
 
