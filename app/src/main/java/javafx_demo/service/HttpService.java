@@ -101,6 +101,7 @@ public class HttpService {
 
         HttpRequest.Builder rb = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + path))
+                .timeout(REQUEST_TIMEOUT)
                 .header("Content-Type", "text/plain;charset=UTF-8")
                 .header("X-Session-Id", ctx.getSessionId())
                 .header("X-Timestamp", timestamp)
@@ -114,6 +115,9 @@ public class HttpService {
         HttpResponse<String> resp = CLIENT.send(rb.build(), HttpResponse.BodyHandlers.ofString());
         return handleEncryptedResponse(resp, key, path);
     }
+
+    /** 单次请求超时 */
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
 
     // ---------- 加密 GET ----------
 
@@ -133,6 +137,7 @@ public class HttpService {
 
         HttpRequest.Builder rb = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + path))
+                .timeout(REQUEST_TIMEOUT)
                 .header("X-Session-Id", ctx.getSessionId())
                 .header("X-Timestamp", timestamp)
                 .header("X-Signature", signature)
@@ -184,6 +189,7 @@ public class HttpService {
 
         HttpRequest.Builder rb = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + path))
+                .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .header("X-Session-Id", ctx.getSessionId())
                 .header("X-Timestamp", timestamp)
@@ -268,6 +274,7 @@ public class HttpService {
 
         HttpRequest.Builder rb = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + path))
+                .timeout(REQUEST_TIMEOUT)
                 .header("X-Session-Id", ctx.getSessionId())
                 .header("X-Timestamp", timestamp)
                 .header("X-Signature", signature)

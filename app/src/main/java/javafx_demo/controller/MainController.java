@@ -281,8 +281,10 @@ public class MainController {
     private void forceLogout(String message) {
         if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
         if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
-        // 先通知后端
-        try { ApiService.logout(); } catch (Exception ignored) {}
+        // 后台通知后端登出，不阻塞 UI 线程
+        Thread t = new Thread(() -> { try { ApiService.logout(); } catch (Exception ignored) {} });
+        t.setDaemon(true);
+        t.start();
         SseClient.getInstance().disconnect();
         SessionContext.getInstance().clear();
         SceneManager.getInstance().switchToLogin();
@@ -1261,8 +1263,12 @@ public class MainController {
         alert.setHeaderText(null);
         alert.showAndWait().ifPresent(response -> {
             if (response == ButtonType.OK) {
+                if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
                 if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
-                try { ApiService.logout(); } catch (Exception ignored) {}
+                // 后台通知后端登出，不阻塞 UI 线程
+                Thread t = new Thread(() -> { try { ApiService.logout(); } catch (Exception ignored) {} });
+                t.setDaemon(true);
+                t.start();
                 SseClient.getInstance().disconnect();
                 SessionContext.getInstance().clear();
                 SceneManager.getInstance().switchToLogin();
