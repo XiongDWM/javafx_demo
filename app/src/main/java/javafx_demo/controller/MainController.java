@@ -1280,16 +1280,7 @@ public class MainController {
 
     public void setUserInfo(String username) {
         usernameLabel.setText(username);
-        // 异步获取后端真实用户状态
-        Task<String> statusTask = new Task<>() {
-            @Override
-            protected String call() throws Exception {
-                return ApiService.getUserStatus();
-            }
-        };
-        statusTask.setOnSucceeded(e -> updateUserStatus(statusTask.getValue()));
-        statusTask.setOnFailed(e -> updateUserStatus("ONLINE")); // 获取失败则默认显示在线
-        runAsync(statusTask);
+        updateUserStatus("ONLINE");
     }
 
     private void updateUserStatus(String status) {
@@ -1308,7 +1299,7 @@ public class MainController {
         userStatusLabel.setText(dot + " " + text);
         userStatusLabel.setStyle("-fx-text-fill: " + color + ";");
 
-        // 忙碌状态才启动心跳保活，其他状态停止心跳
+        // 忙碌状态启动心跳保活，其他状态停止
         if ("BUSY".equals(status)) {
             if (heartbeatTimer == null) startHeartbeat();
         } else {

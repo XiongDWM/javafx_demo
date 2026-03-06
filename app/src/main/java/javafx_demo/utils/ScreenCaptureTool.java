@@ -54,16 +54,19 @@ public class ScreenCaptureTool {
     public static void capture(Window ownerWindow, Consumer<File> onDone) {
         // 收集所有可见 Stage 并隐藏，避免出现在截图中
         List<Stage> toRestore = new ArrayList<>();
+        Stage ownerStage = null;
         for (Window w : new ArrayList<>(Window.getWindows())) {
             if (w instanceof Stage s && s.isShowing() && !s.isIconified()) {
                 s.setIconified(true);
                 toRestore.add(s);
+                if (w == ownerWindow) ownerStage = s;
             }
         }
 
         // 等待窗口完全隐藏后再截图
+        final Stage finalOwner = ownerStage;
         PauseTransition wait = new PauseTransition(Duration.millis(500));
-        wait.setOnFinished(evt -> doCapture(toRestore, onDone));
+        wait.setOnFinished(evt -> doCapture(toRestore, finalOwner, onDone));
         wait.play();
     }
 
@@ -130,7 +133,7 @@ public class ScreenCaptureTool {
 
     // ==================== 截图核心 ====================
 
-    private static void doCapture(List<Stage> toRestore, Consumer<File> onDone) {
+    private static void doCapture(List<Stage> toRestore, Stage ownerStage, Consumer<File> onDone) {
         BufferedImage screenshot;
         Rectangle2D screenBounds = Screen.getPrimary().getBounds();
         try {
@@ -139,14 +142,14 @@ public class ScreenCaptureTool {
                     (int) screenBounds.getMinX(), (int) screenBounds.getMinY(),
                     (int) screenBounds.getWidth(), (int) screenBounds.getHeight()));
         } catch (Exception e) {
-            restore(toRestore);
+            restore(toRestore, ownerStage);
             onDone.accept(null);
             return;
         }
 
         // BufferedImage → JavaFX Image（内存转换，无需写临时文件）
         Image bgImage = toFxImage(screenshot);
-        showOverlay(bgImage, screenshot, screenBounds, toRestore, onDone);
+        showOverlay(bgImage, screenshot, screenBounds, toRestore, ownerStage, onDone);
     }
 
     /** BufferedImage → JavaFX WritableImage（避免依赖 javafx.swing） */
@@ -167,7 +170,7 @@ public class ScreenCaptureTool {
 
     private static void showOverlay(Image bgImage, BufferedImage rawShot,
                                     Rectangle2D screenBounds,
-                                    List<Stage> toRestore, Consumer<File> onDone) {
+                                    List<Stage> toRestore, Stage ownerStage, Consumer<File> onDone) {
         double W = screenBounds.getWidth();
         double H = screenBounds.getHeight();
 
@@ -229,7 +232,7 @@ public class ScreenCaptureTool {
         confirmBtn.setOnAction(e -> {
             File result = cropAndSave(rawShot, W, H, sx[0], sy[0], ex[0], ey[0]);
             overlay.close();
-            restore(toRestore);
+            restore(toRestore, ownerStage);
             onDone.accept(result);
         });
 
@@ -242,7 +245,7 @@ public class ScreenCaptureTool {
 
         cancelBtn.setOnAction(e -> {
             overlay.close();
-            restore(toRestore);
+            restore(toRestore, ownerStage);
             onDone.accept(null);
         });
 
@@ -250,7 +253,7 @@ public class ScreenCaptureTool {
         scene.setOnKeyPressed(e -> {
             if (e.getCode() == KeyCode.ESCAPE) {
                 overlay.close();
-                restore(toRestore);
+                restore(toRestore, ownerStage);
                 onDone.accept(null);
             } else if (e.getCode() == KeyCode.ENTER && locked[0]) {
                 confirmBtn.fire();
@@ -387,13 +390,18 @@ public class ScreenCaptureTool {
 
     // ==================== 工具方法 ====================
 
-    private static void restore(List<Stage> stages) {
+    private static void restore(List<Stage> stages, Stage ownerStage) {
         Platform.runLater(() -> {
             for (Stage s : stages) s.setIconified(false);
-            // 按窗口大小降序排列 toFront，最小的窗口（对话框）最后调用，确保在最前面
-            stages.stream()
-                    .sorted((a, b) -> Double.compare(b.getWidth() * b.getHeight(), a.getWidth() * a.getHeight()))
-                    .forEach(Stage::toFront);
+            // 先恢复所有窗口，然后将触发截图的窗口置顶
+            for (Stage s : stages) {
+                if (s != ownerStage) s.toFront();
+            }
+            // ownerStage 最后 toFront，确保对话框在主窗口前面
+            if (ownerStage != null) {
+                ownerStage.toFront();
+                ownerStage.requestFocus();
+            }
         });
     }
 
