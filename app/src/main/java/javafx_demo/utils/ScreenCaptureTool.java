@@ -390,7 +390,10 @@ public class ScreenCaptureTool {
     private static void restore(List<Stage> stages) {
         Platform.runLater(() -> {
             for (Stage s : stages) s.setIconified(false);
-            for (Stage s : stages) s.toFront();
+            // 按窗口大小降序排列 toFront，最小的窗口（对话框）最后调用，确保在最前面
+            stages.stream()
+                    .sorted((a, b) -> Double.compare(b.getWidth() * b.getHeight(), a.getWidth() * a.getHeight()))
+                    .forEach(Stage::toFront);
         });
     }
 
