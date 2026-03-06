@@ -976,7 +976,7 @@ public class MainController {
         TextField amountField = new TextField();
         amountField.setPromptText("数量");
         ChoiceBox<String> unitBox = new ChoiceBox<>();
-        unitBox.getItems().addAll("HOUR", "BATTLE", "DAY"); //修改为中文显示，key值任然为英文
+        unitBox.getItems().addAll("HOUR", "BATTLE", "DAY");
         unitBox.setValue(order.getUnitType() != null ? order.getUnitType() : "HOUR");
 
         VBox vb = new VBox(10,
@@ -984,10 +984,50 @@ public class MainController {
                 new Label("数量:"), amountField,
                 new Label("单位:"), unitBox);
 
-        // 二手单需要上传附加截图
+        // ---- 续单截图（所有订单都需要） ----
+        final File[] continueFile = {null};
+        {
+            ImageView preview = new ImageView();
+            preview.setFitWidth(250);
+            preview.setFitHeight(160);
+            preview.setPreserveRatio(true);
+
+            Label fileLabel = new Label("未选择");
+            fileLabel.setStyle("-fx-text-fill: #7f8c8d;");
+
+            Button pickBtn = new Button("选择续单截图");
+            pickBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
+            pickBtn.setOnAction(e -> {
+                FileChooser fc = new FileChooser();
+                fc.setTitle("选择续单截图");
+                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
+                File f = fc.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
+                if (f != null) {
+                    continueFile[0] = f;
+                    fileLabel.setText(f.getName());
+                    preview.setImage(new Image(f.toURI().toString(), 250, 160, true, true));
+                }
+            });
+            Consumer<File> captureCb = file -> {
+                if (file != null) {
+                    continueFile[0] = file;
+                    fileLabel.setText("截图");
+                    preview.setImage(new Image(file.toURI().toString(), 250, 160, true, true));
+                }
+            };
+            Button captureBtn = new Button("截图");
+            captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
+            captureBtn.setOnAction(e -> ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), captureCb));
+
+            vb.getChildren().addAll(
+                    new Separator(),
+                    new Label("续单截图:"),
+                    new HBox(10, pickBtn, captureBtn, fileLabel),
+                    preview);
+        }
+
+        // ---- 附加完成截图（二手单必填） ----
         final File[] attachedFile = {null};
-        final Button[] pickBtnRef = {null};
-        Consumer<File> floatingCb = null;
         if (order.isSecondHand()) {
             ImageView preview = new ImageView();
             preview.setFitWidth(250);
@@ -997,12 +1037,11 @@ public class MainController {
             Label fileLabel = new Label("未选择");
             fileLabel.setStyle("-fx-text-fill: #7f8c8d;");
 
-            Button pickBtn = new Button("选择附加截图");
-            pickBtnRef[0] = pickBtn;
+            Button pickBtn = new Button("选择完成截图");
             pickBtn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
             pickBtn.setOnAction(e -> {
                 FileChooser fc = new FileChooser();
-                fc.setTitle("选择图片");
+                fc.setTitle("选择完成截图");
                 fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("图片", "*.png", "*.jpg", "*.jpeg", "*.webp"));
                 File f = fc.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
                 if (f != null) {
@@ -1011,29 +1050,24 @@ public class MainController {
                     preview.setImage(new Image(f.toURI().toString(), 250, 160, true, true));
                 }
             });
-            Consumer<File> attachCaptureCb = file -> {
+            Consumer<File> captureCb = file -> {
                 if (file != null) {
                     attachedFile[0] = file;
                     fileLabel.setText("截图");
                     preview.setImage(new Image(file.toURI().toString(), 250, 160, true, true));
                 }
             };
-            Button captureBtn = new Button("截图 (Ctrl+Alt+A)");
+            Button captureBtn = new Button("截图");
             captureBtn.setStyle("-fx-background-color: #19b33d; -fx-text-fill: white; -fx-cursor: hand; -fx-padding: 6 12;");
-            captureBtn.setOnAction(e -> ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), attachCaptureCb));
-            dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, ke -> {
-                if (ke.isControlDown() && ke.isAltDown() && ke.getCode() == KeyCode.A) {
-                    captureBtn.fire();
-                    ke.consume();
-                }
-            });
+            captureBtn.setOnAction(e -> ScreenCaptureTool.capture(dialog.getDialogPane().getScene().getWindow(), captureCb));
+
             vb.getChildren().addAll(
                     new Separator(),
-                    new Label("附加结束截图(二手单必填):"),
+                    new Label("附加完成截图(二手单必填):"),
                     new HBox(10, pickBtn, captureBtn, fileLabel),
                     preview);
-            floatingCb = attachCaptureCb;
         }
+
         ProgressIndicator loading = new ProgressIndicator();
         loading.setPrefSize(24, 24);
         loading.setVisible(false);
@@ -1049,7 +1083,7 @@ public class MainController {
 
         ButtonType submitType = new ButtonType("提交", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(submitType, ButtonType.CANCEL);
-        dialog.setResultConverter(bt -> null); // 手动控制关闭时机
+        dialog.setResultConverter(bt -> null);
 
         Button submitBtn = (Button) dialog.getDialogPane().lookupButton(submitType);
         submitBtn.addEventFilter(ActionEvent.ACTION, evt -> {
@@ -1063,29 +1097,31 @@ public class MainController {
                 return;
             }
             String unitType = unitBox.getValue();
-            File fileToUpload = attachedFile[0];
 
-            // 二手单必须上传图片
-            if (order.isSecondHand() && fileToUpload == null) {
-                showError("二手单续单必须上传附加截图");
+            if (order.isSecondHand() && attachedFile[0] == null) {
+                showError("二手单续单必须上传附加完成截图");
                 return;
             }
 
             statusLabel.setText("续单中...");
             submitBtn.setDisable(true);
-            if (pickBtnRef[0] != null) {
-                pickBtnRef[0].setDisable(true);
-            }
             loading.setVisible(true);
             loadingLabel.setVisible(true);
 
+            final File continueToUpload = continueFile[0];
+            final File attachedToUpload = attachedFile[0];
+
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    String additionalPic = null;
-                    if (fileToUpload != null) {
-                        additionalPic = ApiService.uploadImage(fileToUpload);
+                    String continuePic = null;
+                    if (continueToUpload != null) {
+                        continuePic = ApiService.uploadImage(continueToUpload);
                     }
-                    ApiService.continueOrder(order.getOrderId(), price, amount, unitType, additionalPic); // 后端接口自行处理二手单，无需区分方法调用
+                    String additionalPic = null;
+                    if (attachedToUpload != null) {
+                        additionalPic = ApiService.uploadImage(attachedToUpload);
+                    }
+                    ApiService.continueOrder(order.getOrderId(), price, amount, unitType, additionalPic, continuePic);
                     return null;
                 }
             };
@@ -1097,9 +1133,6 @@ public class MainController {
             });
             task.setOnFailed(e -> {
                 submitBtn.setDisable(false);
-                if (pickBtnRef[0] != null) {
-                    pickBtnRef[0].setDisable(false);
-                }
                 loading.setVisible(false);
                 loadingLabel.setVisible(false);
                 showError("续单失败: " + task.getException().getMessage());
@@ -1107,9 +1140,6 @@ public class MainController {
             runAsync(task);
         });
 
-        if (floatingCb != null) {
-            ScreenCaptureTool.showFloatingTrigger(floatingCb);
-        }
         dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }

@@ -85,13 +85,14 @@ public class ApiService {
      * 续单
      */
     public static void continueOrder(String orderId, double price, double amount,
-                                     String unitType, String additionalPic) throws Exception {
+                                     String unitType, String additionalPic, String continuePic) throws Exception {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("orderId", orderId);
         body.put("price", String.valueOf(price));
         body.put("amount", String.valueOf(amount));
         body.put("unitType", unitType);
         if (additionalPic != null && !additionalPic.isEmpty()) body.put("additionalPic", additionalPic);
+        if (continuePic != null && !continuePic.isEmpty()) body.put("continuePic", continuePic);
         String resp = retryOnKeyExpired(() -> HttpService.post("/order/continue", toJson(body)));
         checkSuccess(resp);
     }
