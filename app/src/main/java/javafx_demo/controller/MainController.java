@@ -47,11 +47,10 @@ import java.util.stream.Collectors;
  */
 public class MainController {
 
-    /** 空闲超时（毫秒）— 1.5 小时 */
-    private static final long IDLE_TIMEOUT_MS = (long) (1.5 * 60 * 60 * 1000L);
+    /** 空闲超时（毫秒）— 2.5 小时 */
+    private static final long IDLE_TIMEOUT_MS = (long) (2.5 * 60 * 60 * 1000L);
     /** 空闲检查间隔（毫秒）— 1 分钟 */
     private static final long IDLE_CHECK_INTERVAL_MS = 60_000L;
-    /** 心跳间隔（毫秒）— 10 分钟，保持 JWT token 不过期 */
     private static final long HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000L;
 
     private volatile long lastActivityTime = System.currentTimeMillis();
@@ -256,7 +255,6 @@ public class MainController {
         }, IDLE_CHECK_INTERVAL_MS, IDLE_CHECK_INTERVAL_MS);
     }
 
-    /** 启动心跳定时器：每 10 分钟发一次轻量请求，触发后端 JWT 滑动续期 + ActivityTracker.touch() */
     private void startHeartbeat() {
         heartbeatTimer = new java.util.Timer("Heartbeat", true);
         heartbeatTimer.scheduleAtFixedRate(new java.util.TimerTask() {
@@ -269,7 +267,7 @@ public class MainController {
                     System.err.println("[Heartbeat] 失败: " + e.getMessage());
                 }
             }
-        }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS);
+        }, 0, HEARTBEAT_INTERVAL_MS);
     }
 
     /** 超时强制登出 */
@@ -1301,6 +1299,7 @@ public class MainController {
 
         // 忙碌状态启动心跳保活，其他状态停止
         if ("BUSY".equals(status)) {
+            System.out.println("接单状态，心跳");
             if (heartbeatTimer == null) startHeartbeat();
         } else {
             if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
