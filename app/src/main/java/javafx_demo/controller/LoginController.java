@@ -11,6 +11,8 @@ import javafx_demo.utils.ConfigManager;
 import javafx_demo.utils.SceneManager;
 import javafx_demo.utils.SessionContext;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 
 /**
  * Login Controller - 登录控制器（ECDH 握手 + /user/pal/login）
@@ -25,6 +27,8 @@ public class LoginController {
     @FXML private Label errorLabel;
     @FXML private Label subtitleLabel;
     @FXML private Label versionLabel;
+    private final AtomicBoolean loginInProgress = new AtomicBoolean(false);
+    private final AtomicBoolean loginResultHandled = new AtomicBoolean(false);
 
     private ConfigManager configManager;
 
@@ -44,11 +48,26 @@ public class LoginController {
 
     @FXML
     private void handleLogin() {
+        if (!loginInProgress.compareAndSet(false, true)) {
+            System.out.println("[Login] 登录进行中，忽略重复触发");
+            return;
+        }
+
         String username = usernameField.getText().trim();
         String password = passwordField.getText();
 
-        if (username.isEmpty()) { showError("请输入用户名"); usernameField.requestFocus(); return; }
-        if (password.isEmpty()) { showError("请输入密码"); passwordField.requestFocus(); return; }
+        if (username.isEmpty()) {
+            loginInProgress.set(false);
+            showError("请输入用户名");
+            usernameField.requestFocus();
+            return;
+        }
+        if (password.isEmpty()) {
+            loginInProgress.set(false);
+            showError("请输入密码");
+            passwordField.requestFocus();
+            return;
+        }
 
         loginButton.setDisable(true);
         loginButton.setText("登录中...");
@@ -65,8 +84,13 @@ public class LoginController {
         };
 
         loginTask.setOnSucceeded(event -> {
+            if (!loginResultHandled.compareAndSet(false, true)) {
+                System.out.println("[Login] 已有成功登录结果被处理，忽略重复回调");
+                return;
+            }
             loginButton.setDisable(false);
             loginButton.setText("登录");
+            loginInProgress.set(false);
 
             String token = loginTask.getValue();
             SessionContext ctx = SessionContext.getInstance();
@@ -82,8 +106,13 @@ public class LoginController {
         });
 
         loginTask.setOnFailed(event -> {
+            if (loginResultHandled.get()) {
+                // 已经成功切页，后续失败回调不再影响 UI
+                return;
+            }
             loginButton.setDisable(false);
             loginButton.setText("登录");
+            loginInProgress.set(false);
             Throwable ex = loginTask.getException();
             String msg = ex.getMessage() != null ? ex.getMessage() : "未知错误";
             showError("登录失败: " + msg);

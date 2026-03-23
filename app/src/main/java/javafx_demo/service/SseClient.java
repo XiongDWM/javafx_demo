@@ -124,12 +124,18 @@ public class SseClient {
 
         // 构建 URL
         StringBuilder pathBuilder = new StringBuilder("/events/stream");
+        List<String> queryParts = new ArrayList<>();
+        // 携带 token 以实现租户隔离
+        if (ctx.getJwtToken() != null) {
+            queryParts.add("token=" + ctx.getJwtToken());
+        }
         if (domains != null && !domains.isEmpty()) {
-            StringJoiner joiner = new StringJoiner("&", "?", "");
             for (String d : domains) {
-                joiner.add("domain=" + d);
+                queryParts.add("domain=" + d);
             }
-            pathBuilder.append(joiner);
+        }
+        if (!queryParts.isEmpty()) {
+            pathBuilder.append("?").append(String.join("&", queryParts));
         }
         String path = pathBuilder.toString();
 
@@ -170,6 +176,10 @@ public class SseClient {
             StringBuilder dataBuilder = new StringBuilder();
             String line;
             while (running.get() && (line = reader.readLine()) != null) {
+                if (line.startsWith(":")) {
+                    // SSE 注释帧（如 ": keepalive"），忽略内容但说明连接活着
+                    continue;
+                }
                 if (line.startsWith("data:")) {
                     dataBuilder.append(line.substring(5).trim());
                 } else if (line.isEmpty() && dataBuilder.length() > 0) {
@@ -180,7 +190,7 @@ public class SseClient {
                 }
             }
         }
-        System.out.println("[SSE] 流结束");
+        System.out.println("[SSE] 流结束，准备重连");
     }
 
     private void parseAndDispatch(String data) {

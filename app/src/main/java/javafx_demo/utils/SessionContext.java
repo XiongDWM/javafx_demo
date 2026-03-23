@@ -16,12 +16,12 @@ public class SessionContext {
             System.getProperty("user.home"), ".future_pal", "client.id");
     private static final SessionContext INSTANCE = new SessionContext();
 
-    private String sessionId;      // ECDH 会话 ID
-    private SecretKey sharedKey;    // AES 共享密钥
-    private String jwtToken;       // JWT 令牌
-    private long userId;           // 当前用户 ID
-    private String username;       // 当前用户名
-    private String role;           // 用户角色
+    private volatile String sessionId;      // ECDH 会话 ID
+    private volatile SecretKey sharedKey;    // AES 共享密钥
+    private volatile String jwtToken;       // JWT 令牌
+    private volatile long userId;           // 当前用户 ID
+    private volatile String username;       // 当前用户名
+    private volatile String role;           // 用户角色
     private String softwareCode;   // 客户端唯一码
 
     private SessionContext() {

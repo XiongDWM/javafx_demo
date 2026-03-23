@@ -39,6 +39,7 @@ import java.io.File;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -47,15 +48,19 @@ import java.util.stream.Collectors;
  */
 public class MainController {
 
+    private static final AtomicBoolean BACKGROUND_WORKERS_STARTED = new AtomicBoolean(false);
+
     /** 空闲超时（毫秒）— 2.5 小时 */
     private static final long IDLE_TIMEOUT_MS = (long) (2.5 * 60 * 60 * 1000L);
     /** 空闲检查间隔（毫秒）— 1 分钟 */
     private static final long IDLE_CHECK_INTERVAL_MS = 60_000L;
-    private static final long HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000L;
+    private static final long HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000L;
 
     private volatile long lastActivityTime = System.currentTimeMillis();
     private java.util.Timer idleTimer;
     private java.util.Timer heartbeatTimer;
+    private final AtomicBoolean logoutTriggered = new AtomicBoolean(false);
+    private volatile String currentUserStatus = "ONLINE";
 
     // ---- Header ----
     @FXML private Label usernameLabel;
@@ -228,10 +233,16 @@ public class MainController {
         showDashboard();
         // 异步加载今日工单
         loadOrders();
-        // 启动 SSE 监听
-        startSSE();
-        // 启动空闲超时检测
-        startIdleTimer();
+        if (BACKGROUND_WORKERS_STARTED.compareAndSet(false, true)) {
+            // 启动 SSE 监听
+            startSSE();
+            // 启动空闲超时检测
+            startIdleTimer();
+            // 启动心跳保活（全状态运行，确保 token 不过期）
+            startHeartbeat();
+        } else {
+            System.out.println("[Main] 检测到重复初始化，跳过后台任务启动");
+        }
     }
 
     /** 启动空闲超时检测：监听鼠标/键盘事件重置计时，定时检查是否超过 30 分钟 */
@@ -248,8 +259,12 @@ public class MainController {
         idleTimer.scheduleAtFixedRate(new java.util.TimerTask() {
             @Override
             public void run() {
+                // 忙碌状态不做本地空闲强退，避免在游戏中无桌面输入被误判
+                if ("BUSY".equals(currentUserStatus)) {
+                    return;
+                }
                 if (System.currentTimeMillis() - lastActivityTime > IDLE_TIMEOUT_MS) {
-                    Platform.runLater(() -> forceLogout());
+                    Platform.runLater(() -> forceLogout("IDLE_TIMEOUT", null));
                 }
             }
         }, IDLE_CHECK_INTERVAL_MS, IDLE_CHECK_INTERVAL_MS);
@@ -272,11 +287,22 @@ public class MainController {
 
     /** 超时强制登出 */
     private void forceLogout() {
-        forceLogout(null);
+        forceLogout("UNKNOWN", null);
     }
 
     /** 强制登出，可附带提示信息 */
     private void forceLogout(String message) {
+        forceLogout("UNKNOWN", message);
+    }
+
+    /** 强制登出，带触发原因，便于定位问题 */
+    private void forceLogout(String reason, String message) {
+        if (!logoutTriggered.compareAndSet(false, true)) {
+            System.out.println("[Logout] 已在执行中");
+            return;
+        }
+        BACKGROUND_WORKERS_STARTED.set(false);
+        System.err.println("[Logout] 触发原因=" + reason + ", status=" + currentUserStatus + ", at=" + new java.util.Date());
         if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
         if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
         // 后台通知后端登出，不阻塞 UI 线程
@@ -298,6 +324,7 @@ public class MainController {
     /** 启动 SSE 并注册事件回调 */
     private void startSSE() {
         SseClient sse = SseClient.getInstance();
+        sse.offAll();
 
         // 全局日志 — 方便调试所有事件
         sse.on("*", (domain, action, resourceId) ->
@@ -807,8 +834,6 @@ public class MainController {
             runAsync(task);
         });
 
-        ScreenCaptureTool.showFloatingTrigger(captureCallback);
-        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1140,7 +1165,6 @@ public class MainController {
             runAsync(task);
         });
 
-        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1247,8 +1271,6 @@ public class MainController {
             runAsync(task);
         });
 
-        ScreenCaptureTool.showFloatingTrigger(closeCaptureCallback);
-        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1261,15 +1283,7 @@ public class MainController {
         alert.setHeaderText(null);
         alert.showAndWait().ifPresent(response -> {
             if (response == ButtonType.OK) {
-                if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
-                if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
-                // 后台通知后端登出，不阻塞 UI 线程
-                Thread t = new Thread(() -> { try { ApiService.logout(); } catch (Exception ignored) {} });
-                t.setDaemon(true);
-                t.start();
-                SseClient.getInstance().disconnect();
-                SessionContext.getInstance().clear();
-                SceneManager.getInstance().switchToLogin();
+                forceLogout();
             }
         });
     }
@@ -1282,6 +1296,7 @@ public class MainController {
     }
 
     private void updateUserStatus(String status) {
+        this.currentUserStatus = status;
         String dot = "●";
         String text;
         String color;
@@ -1296,14 +1311,6 @@ public class MainController {
         }
         userStatusLabel.setText(dot + " " + text);
         userStatusLabel.setStyle("-fx-text-fill: " + color + ";");
-
-        // 忙碌状态启动心跳保活，其他状态停止
-        if ("BUSY".equals(status)) {
-            System.out.println("接单状态，心跳");
-            if (heartbeatTimer == null) startHeartbeat();
-        } else {
-            if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
-        }
     }
 
     private void setActiveButton(Button active) {
@@ -1317,12 +1324,15 @@ public class MainController {
     }
 
     private void runAsync(Task<?> task) {
+        final String source = detectCaller();
         // 包装 onFailed，优先拦截 401 UnauthorizedException
         var originalOnFailed = task.getOnFailed();
         task.setOnFailed(e -> {
             Throwable ex = task.getException();
             if (isUnauthorized(ex)) {
-                Platform.runLater(() -> forceLogout("自动登出，请重新登录"));
+                String detail = unauthorizedDetail(ex);
+                System.err.println("[401] 触发强退: source=" + source + " detail=" + detail);
+                Platform.runLater(() -> forceLogout("UNAUTHORIZED: source=" + source + ", " + detail, "自动登出，请重新登录"));
                 return;
             }
             // 404 静默忽略，不弹窗
@@ -1337,6 +1347,31 @@ public class MainController {
         Thread t = new Thread(task);
         t.setDaemon(true);
         t.start();
+    }
+
+    private String detectCaller() {
+        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+        boolean seenRunAsync = false;
+        for (StackTraceElement el : stack) {
+            if ("runAsync".equals(el.getMethodName())) {
+                seenRunAsync = true;
+                continue;
+            }
+            if (seenRunAsync && MainController.class.getName().equals(el.getClassName())) {
+                return el.getMethodName();
+            }
+        }
+        return "unknown";
+    }
+
+    private String unauthorizedDetail(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof HttpService.UnauthorizedException ue) {
+                return "path=" + ue.getPath() + ", status=" + ue.getStatusCode();
+            }
+            ex = ex.getCause();
+        }
+        return "path=unknown, status=unknown";
     }
 
     /** 检查异常链中是否包含 UnauthorizedException */
@@ -1698,8 +1733,6 @@ public class MainController {
             runAsync(task);
         });
 
-        ScreenCaptureTool.showFloatingTrigger(renewCaptureCb);
-        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 
@@ -1834,8 +1867,6 @@ public class MainController {
             runAsync(task);
         });
 
-        ScreenCaptureTool.showFloatingTrigger(addBookCaptureCb);
-        dialog.setOnHidden(e -> ScreenCaptureTool.hideFloatingTrigger());
         dialog.showAndWait();
     }
 

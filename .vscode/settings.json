@@ -1,4 +1,17 @@
 {
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "keyword.other.package.java",
+                    "keyword.other.import.java"
+                ],
+                "settings": {
+                    "foreground": "#00897B"
+                }
+            }
+        ]
+    },
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive"
 }

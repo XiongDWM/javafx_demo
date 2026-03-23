@@ -24,7 +24,17 @@ public class HttpService {
 
     /** Token 过期或无效时抛出的异常 */
     public static class UnauthorizedException extends RuntimeException {
-        public UnauthorizedException() { super("自动登出，请重新登录"); }
+        private final String path;
+        private final int statusCode;
+
+        public UnauthorizedException(String path, int statusCode) {
+            super("自动登出，请重新登录 [" + statusCode + "] " + path);
+            this.path = path;
+            this.statusCode = statusCode;
+        }
+
+        public String getPath() { return path; }
+        public int getStatusCode() { return statusCode; }
     }
 
     /** 接口不存在 (404) */
@@ -68,7 +78,7 @@ public class HttpService {
         SessionContext ctx = SessionContext.getInstance();
         ctx.setSessionId(sessionId);
         ctx.setSharedKey(sharedKey);
-        System.out.println("ECDH 握手成功，sessionId=" + sessionId);
+        System.out.println("ECDH 握手成功");
     }
 
     /** 确保有活跃的 ECDH 会话，没有则重新握手 */
@@ -199,7 +209,7 @@ public class HttpService {
 
         HttpResponse<String> resp = CLIENT.send(rb.build(), HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() == 401||resp.statusCode() == 403) {
-            throw new UnauthorizedException();
+            throw new UnauthorizedException(path, resp.statusCode());
         }
         if (resp.statusCode() == 404) {
             throw new NotFoundException();
@@ -217,12 +227,12 @@ public class HttpService {
         // 滑动续期：后端签发了新 token，更新本地存储
         resp.headers().firstValue("X-New-Token").ifPresent(newToken -> {
             SessionContext.getInstance().setJwtToken(newToken);
-            System.out.println("[Token] 滑动续期，token 已更新");
+            System.out.println("[Token] 滑动续期，token 已更新 at"+ new java.util.Date());
         });
 
         String body = resp.body();
         if (resp.statusCode() == 401 || resp.statusCode() == 403) {
-            throw new UnauthorizedException();
+            throw new UnauthorizedException(path, resp.statusCode());
         }
         if (resp.statusCode() == 404) {
             throw new NotFoundException();
@@ -291,7 +301,7 @@ public class HttpService {
         });
 
         if (resp.statusCode() == 401 || resp.statusCode() == 403) {
-            throw new UnauthorizedException();
+            throw new UnauthorizedException(path, resp.statusCode());
         }
         if (resp.statusCode() == 404) {
             throw new NotFoundException();
