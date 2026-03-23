@@ -98,6 +98,18 @@ public class HttpService {
      */
     public static String post(String path, String json) throws Exception {
         ensureSession();
+        try {
+            return postOnce(path, json);
+        } catch (RuntimeException re) {
+            if ("RETRY".equals(re.getMessage())) {
+                // handshake() 已在 handleEncryptedResponse 中完成，直接用新会话重试
+                return postOnce(path, json);
+            }
+            throw re;
+        }
+    }
+
+    private static String postOnce(String path, String json) throws Exception {
         SessionContext ctx = SessionContext.getInstance();
         SecretKey key = ctx.getSharedKey();
 
@@ -138,6 +150,17 @@ public class HttpService {
      */
     public static String get(String path) throws Exception {
         ensureSession();
+        try {
+            return getOnce(path);
+        } catch (RuntimeException re) {
+            if ("RETRY".equals(re.getMessage())) {
+                return getOnce(path);
+            }
+            throw re;
+        }
+    }
+
+    private static String getOnce(String path) throws Exception {
         SessionContext ctx = SessionContext.getInstance();
         SecretKey key = ctx.getSharedKey();
 
@@ -231,8 +254,17 @@ public class HttpService {
         });
 
         String body = resp.body();
-        if (resp.statusCode() == 401 || resp.statusCode() == 403) {
-            throw new UnauthorizedException(path, resp.statusCode());
+        if (resp.statusCode() == 401) {
+            throw new UnauthorizedException(path, 401);
+        }
+        if (resp.statusCode() == 403) {
+            // GlobalWebFilter 返回 403 + code:556 表示会话密钥过期（明文 JSON，未加密）
+            if (body != null && body.contains("\"code\":556")) {
+                System.out.println("[Session] 会话密钥过期，重新握手...");
+                handshake();
+                throw new RuntimeException("RETRY");
+            }
+            throw new UnauthorizedException(path, 403);
         }
         if (resp.statusCode() == 404) {
             throw new NotFoundException();
@@ -243,9 +275,9 @@ public class HttpService {
         // 响应是 AES-GCM 加密的 Base64 文本
         try {
             String decrypted = CryptoUtil.decrypt(key, body.trim());
-            // 检查是否密钥过期 (code=556)
+            // 检查是否密钥过期 (code=556) —— 200 OK 包裹的情况
             if (decrypted.contains("\"code\":556")) {
-                System.out.println("密钥过期，重新握手...");
+                System.out.println("[Session] 会话密钥过期，重新握手...");
                 handshake();
                 throw new RuntimeException("RETRY");
             }
