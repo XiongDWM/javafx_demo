@@ -72,6 +72,7 @@ public class SseClient {
         System.out.println("[SSE] 已断开");
     }
 
+
     /**
      * 注册事件监听
      * @param domain 域名（如 "ORDER"），或 "*" 监听所有

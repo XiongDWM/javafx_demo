@@ -345,23 +345,71 @@ public class ApiService {
     // ==================== 统计 ====================
 
     /**
-     * 获取用户统计摘要
-     * @return {totalOrders: int, totalIncome: double}
+     * 获取用户当期收入统计（POST /statistic/user-summary）
+     * 返回字段：totalIncome, totalCount, from, to
+     *   + firstIncome/firstAuth/firstRej/firstPend/firstCount
+     *   + renewalIncome/renewalAuth/renewalRej/renewalPend/renewalCount
+     *   + otherIncome/otherAuth/otherRej/otherPend/otherCount
      */
-    public static Map<String, Object> getUserSummary(long userId) throws Exception {
-        String resp = retryOnKeyExpired(
-                () -> HttpService.get("/statistic/user-summary?userId=" + userId));
+    public static Map<String, Object> getUserIncomeStatistic(long userId) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("userId", userId);
+        String resp = retryOnKeyExpired(() -> HttpService.post("/statistic/user-summary", toJson(body)));
         JsonNode json = MAPPER.readTree(resp);
         if (!json.path("success").asBoolean()) {
             throw new RuntimeException("获取统计失败");
         }
         JsonNode data = json.path("data");
-        if (data.isMissingNode()) {
-            return new LinkedHashMap<>();
-        }
+        if (data.isMissingNode()) return new LinkedHashMap<>();
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalOrders", data.path("totalOrders").asInt());
         result.put("totalIncome", data.path("totalIncome").asDouble());
+        result.put("totalCount",  data.path("totalCount").asDouble());
+        result.put("from", data.path("from").asText(""));
+        result.put("to",   data.path("to").asText(""));
+        String[][] categories = {
+            {"first",   "unrepeatedIncome"},
+            {"renewal", "repeatedIncome"},
+            {"other",   "othersIncome"}
+        };
+        for (String[] cat : categories) {
+            String prefix = cat[0];
+            JsonNode n = data.path(cat[1]);
+            result.put(prefix + "Income", n.path("totalIncome").asDouble());
+            result.put(prefix + "Auth",   n.path("authorizedIncome").asDouble());
+            result.put(prefix + "Rej",    n.path("unauthorizedIncome").asDouble());
+            result.put(prefix + "Pend",   n.path("pendingIncome").asDouble());
+            result.put(prefix + "Count",  n.path("count").asDouble());
+        }
+        return result;
+    }
+
+    /**
+     * 获取所有打手当期排行（GET /statistic/ranking）
+     */
+    public static List<Map<String, Object>> getRanking() throws Exception {
+        String resp = retryOnKeyExpired(() -> HttpService.get("/statistic/ranking"));
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) throw new RuntimeException("获取排行失败");
+        JsonNode data = json.path("data");
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (data.isArray()) {
+            for (JsonNode item : data) result.add(jsonNodeToMap(item));
+        }
+        return result;
+    }
+
+    /**
+     * 获取指定打手近7天收入趋势（GET /statistic/weekly-trend）
+     */
+    public static List<Map<String, Object>> getWeeklyTrend(long userId) throws Exception {
+        String resp = retryOnKeyExpired(() -> HttpService.get("/statistic/weekly-trend?userId=" + userId));
+        JsonNode json = MAPPER.readTree(resp);
+        if (!json.path("success").asBoolean()) throw new RuntimeException("获取趋势失败");
+        JsonNode days = json.path("data").path("days");
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (days.isArray()) {
+            for (JsonNode day : days) result.add(jsonNodeToMap(day));
+        }
         return result;
     }
 

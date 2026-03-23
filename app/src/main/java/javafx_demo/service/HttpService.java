@@ -227,7 +227,7 @@ public class HttpService {
         // 滑动续期：后端签发了新 token，更新本地存储
         resp.headers().firstValue("X-New-Token").ifPresent(newToken -> {
             SessionContext.getInstance().setJwtToken(newToken);
-            System.out.println("[Token] 滑动续期，token 已更新 at"+ new java.util.Date());
+            System.out.println("[Token] 滑动续期，token 已更新 at " + new java.util.Date());
         });
 
         String body = resp.body();

@@ -10,6 +10,8 @@ import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -54,7 +56,7 @@ public class MainController {
     private static final long IDLE_TIMEOUT_MS = (long) (2.5 * 60 * 60 * 1000L);
     /** 空闲检查间隔（毫秒）— 1 分钟 */
     private static final long IDLE_CHECK_INTERVAL_MS = 60_000L;
-    private static final long HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000L;
+    private static final long HEARTBEAT_INTERVAL_MS = 60 * 1000L;
 
     private volatile long lastActivityTime = System.currentTimeMillis();
     private java.util.Timer idleTimer;
@@ -124,9 +126,21 @@ public class MainController {
     @FXML private Label boPageLabel;
 
     // -- 统计视图 --
-    @FXML private VBox statsPane;
-    @FXML private Label totalOrdersLabel;
-    @FXML private Label totalIncomeLabel;
+    @FXML private ScrollPane statsPane;
+    @FXML private Label statTotalIncomeLabel;
+    @FXML private Label statTotalCountLabel;
+    @FXML private Label statPeriodLabel;
+    @FXML private Label statFirstIncomeLabel;
+    @FXML private Label statFirstCountLabel;
+    @FXML private Label statRenewalIncomeLabel;
+    @FXML private Label statRenewalCountLabel;
+    @FXML private Label statOtherIncomeLabel;
+    @FXML private Label statOtherCountLabel;
+    @FXML private TableView<Map<String, Object>> rankingTable;
+    @FXML private TableColumn<Map<String, Object>, String> rankNameCol;
+    @FXML private TableColumn<Map<String, Object>, String> rankIncomeCol;
+    @FXML private TableColumn<Map<String, Object>, String> rankCountCol;
+    @FXML private LineChart<String, Number> weeklyChart;
 
     // -- 我的视图 --
     @FXML private ScrollPane settingsPane;
@@ -302,7 +316,7 @@ public class MainController {
             return;
         }
         BACKGROUND_WORKERS_STARTED.set(false);
-        System.err.println("[Logout] 触发原因=" + reason + ", status=" + currentUserStatus + ", at=" + new java.util.Date());
+        System.out.println("[Logout] 触发原因=" + reason + ", status=" + currentUserStatus + ", at=" + new java.util.Date());
         if (heartbeatTimer != null) { heartbeatTimer.cancel(); heartbeatTimer = null; }
         if (idleTimer != null) { idleTimer.cancel(); idleTimer = null; }
         // 后台通知后端登出，不阻塞 UI 线程
@@ -399,6 +413,8 @@ public class MainController {
         showOnly(statsPane);
         statusLabel.setText("统计");
         loadStatistics();
+        loadRanking();
+        loadWeeklyTrend();
     }
 
     @FXML
@@ -675,26 +691,114 @@ public class MainController {
     }
 
     private void loadStatistics() {
-        totalOrdersLabel.setText("...");
-        totalIncomeLabel.setText("...");
+        setStatLabelsLoading();
         SessionContext ctx = SessionContext.getInstance();
         Task<Map<String, Object>> task = new Task<>() {
             @Override
             protected Map<String, Object> call() throws Exception {
-                return ApiService.getUserSummary(ctx.getUserId());
+                return ApiService.getUserIncomeStatistic(ctx.getUserId());
             }
         };
         task.setOnSucceeded(e -> {
             Map<String, Object> d = task.getValue();
-            totalOrdersLabel.setText(String.valueOf(((Number) d.get("totalOrders")).intValue()));
-            totalIncomeLabel.setText(String.format("%.2f", ((Number) d.get("totalIncome")).doubleValue()));
+            statTotalIncomeLabel.setText(String.format("¥%.2f", num(d, "totalIncome")));
+            statTotalCountLabel.setText(String.format("%.1fh", num(d, "totalCount")));
+            String from = String.valueOf(d.getOrDefault("from", ""));
+            String to   = String.valueOf(d.getOrDefault("to", ""));
+            statPeriodLabel.setText(from.length() > 10 ? from.substring(0, 10) : from);
+            // category cards
+            statFirstIncomeLabel.setText(String.format("¥%.2f", num(d, "firstIncome")));
+            statFirstCountLabel.setText(String.format("%.1fh", num(d, "firstCount")));
+            statRenewalIncomeLabel.setText(String.format("¥%.2f", num(d, "renewalIncome")));
+            statRenewalCountLabel.setText(String.format("%.1fh", num(d, "renewalCount")));
+            statOtherIncomeLabel.setText(String.format("¥%.2f", num(d, "otherIncome")));
+            statOtherCountLabel.setText(String.format("%.1fh", num(d, "otherCount")));
         });
         task.setOnFailed(e -> {
-            totalOrdersLabel.setText("--");
-            totalIncomeLabel.setText("--");
-            showError("加载统计失败: " + task.getException().getMessage());
+            setStatLabelsError();
+            System.err.println("加载统计失败: " + task.getException().getMessage());
         });
         runAsync(task);
+    }
+
+    private void loadRanking() {
+        Task<List<Map<String, Object>>> task = new Task<>() {
+            @Override
+            protected List<Map<String, Object>> call() throws Exception {
+                return ApiService.getRanking();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            setupRankingColumns();
+            rankingTable.getItems().setAll(task.getValue());
+        });
+        task.setOnFailed(e -> System.err.println("加载排行失败: " + task.getException().getMessage()));
+        runAsync(task);
+    }
+
+    private void loadWeeklyTrend() {
+        SessionContext ctx = SessionContext.getInstance();
+        Task<List<Map<String, Object>>> task = new Task<>() {
+            @Override
+            protected List<Map<String, Object>> call() throws Exception {
+                return ApiService.getWeeklyTrend(ctx.getUserId());
+            }
+        };
+        task.setOnSucceeded(e -> {
+            List<Map<String, Object>> days = task.getValue();
+            weeklyChart.getData().clear();
+            XYChart.Series<String, Number> firstSeries   = new XYChart.Series<>();
+            XYChart.Series<String, Number> renewalSeries = new XYChart.Series<>();
+            XYChart.Series<String, Number> otherSeries   = new XYChart.Series<>();
+            firstSeries.setName("首单");
+            renewalSeries.setName("续单");
+            otherSeries.setName("其他");
+            for (Map<String, Object> day : days) {
+                String date = String.valueOf(day.getOrDefault("date", ""));
+                firstSeries.getData().add(new XYChart.Data<>(date, num(day, "firstIncome")));
+                renewalSeries.getData().add(new XYChart.Data<>(date, num(day, "renewalIncome")));
+                otherSeries.getData().add(new XYChart.Data<>(date, num(day, "otherIncome")));
+            }
+            weeklyChart.getData().addAll(firstSeries, renewalSeries, otherSeries);
+        });
+        task.setOnFailed(e -> System.err.println("加载趋势失败: " + task.getException().getMessage()));
+        runAsync(task);
+    }
+
+    private void setupRankingColumns() {
+        if (rankNameCol.getCellValueFactory() != null) return; // already set up
+        rankNameCol.setCellValueFactory(c -> {
+            Object name = c.getValue().get("realName");
+            if (name == null || name.toString().isBlank()) name = c.getValue().get("username");
+            return new SimpleStringProperty(name == null ? "" : name.toString());
+        });
+        rankIncomeCol.setCellValueFactory(c ->
+            new SimpleStringProperty(String.format("¥%.2f", num(c.getValue(), "totalIncome"))));
+        rankCountCol.setCellValueFactory(c ->
+            new SimpleStringProperty(String.format("%.1fh", num(c.getValue(), "totalCount"))));
+    }
+
+    private double num(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        return v instanceof Number ? ((Number) v).doubleValue() : 0.0;
+    }
+
+    private void setStatLabelsLoading() {
+        String hint = "...";
+        statTotalIncomeLabel.setText(hint); statTotalCountLabel.setText(hint);
+        statPeriodLabel.setText(hint);
+        statFirstIncomeLabel.setText(hint); statFirstCountLabel.setText(hint);
+        statRenewalIncomeLabel.setText(hint); statRenewalCountLabel.setText(hint);
+        statOtherIncomeLabel.setText(hint); statOtherCountLabel.setText(hint);
+    }
+
+    private void setStatLabelsError() {
+        String hint = "--";
+        statTotalIncomeLabel.setText(hint); statTotalCountLabel.setText(hint);
+        statPeriodLabel.setText(hint);
+        statFirstIncomeLabel.setText(hint); statFirstCountLabel.setText(hint);
+        statRenewalIncomeLabel.setText(hint); statRenewalCountLabel.setText(hint);
+        statOtherIncomeLabel.setText(hint); statOtherCountLabel.setText(hint);
     }
 
     // ====================== 顶部按钮操作 ======================
@@ -1331,7 +1435,7 @@ public class MainController {
             Throwable ex = task.getException();
             if (isUnauthorized(ex)) {
                 String detail = unauthorizedDetail(ex);
-                System.err.println("[401] 触发强退: source=" + source + " detail=" + detail);
+                System.out.println("[401] 触发强退: source=" + source + " detail=" + detail);
                 Platform.runLater(() -> forceLogout("UNAUTHORIZED: source=" + source + ", " + detail, "自动登出，请重新登录"));
                 return;
             }
