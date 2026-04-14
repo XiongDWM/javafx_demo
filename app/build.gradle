@@ -44,7 +44,7 @@ jlink {
     options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
     imageName = 'env'
     launcher {
-        name = '未来电竞打手端' // 生成的可执行文件名
+        name = '据点打手端' // 生成的可执行文件名
         // 为运行时添加 JVM 参数，例如启用 ZGC（Java 21）
         jvmArgs = ['-XX:+UseZGC']
     }
@@ -52,8 +52,8 @@ jlink {
 
 launch4j {
     mainClassName = 'javafx_demo.App'
-    outfile = '未来电竞打手端.exe'
-    productName="未来电竞打手端"
+    outfile = '据点打手端.exe'
+    productName="据点打手端"
     icon = "${projectDir}/src/main/resources/icon.ico"
     bundledJrePath = './env'
 }
